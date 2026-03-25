@@ -107,11 +107,28 @@ export function createBlogToolHandlers(ctx: BlogToolContext) {
             logger.debug('Thread auto-created', { threadId: resolvedThreadId, repoKey: params.repoKey });
           }
         } else {
-          // Reject cross-repo threadId: if caller passed an explicit threadId,
-          // it must belong to the same repo (prevents one repo from appending into another's thread)
+          // Explicit threadId: create it if missing (caller may generate the UUID,
+          // e.g. novel engine), or join an existing thread in the same repo.
+          // Reject only if the existing thread belongs to a different repo.
           const existing = await ctx.storage.getThread(params.threadId);
           if (existing && existing.repoKey !== (params.repoKey as RepoKey)) {
             return toMcpError(`Thread not found in repo: ${params.repoKey}`);
+          }
+          if (!existing) {
+            const thread: Thread = {
+              id: params.threadId,
+              repoKey: params.repoKey as RepoKey,
+              posterId: poster.id,
+              title: params.title,
+              postCount: 0,
+              latestPostAt: now,
+              status: 'open',
+              prNumber: params.metadata?.prNumber,
+              prUrl: params.metadata?.prUrl,
+              createdAt: now,
+            };
+            await ctx.storage.createThread(thread);
+            logger.debug('Thread created from explicit threadId', { threadId: params.threadId, repoKey: params.repoKey });
           }
         }
 

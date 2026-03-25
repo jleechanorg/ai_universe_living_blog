@@ -86,6 +86,23 @@ describe('MemoryBlogStorage', () => {
     expect(thread!.repoKey).toBe(TEST_REPO);
   });
 
+  it('create_post with explicit threadId creates missing thread', async () => {
+    const ctx = makeCtx();
+    const explicitId = '550e8400-e29b-41d4-a716-446655440000';
+    await ctx.create_post({
+      repoKey: TEST_REPO,
+      posterId: 'ao-826',
+      title: 'Novel entry',
+      content: 'A story',
+      eventType: 'novel_branch_entry',
+      threadId: explicitId, // explicit UUID — should create thread if missing
+    });
+    const thread = await ctx.storage.getThread(explicitId);
+    expect(thread).not.toBeNull();
+    expect(thread!.repoKey).toBe(TEST_REPO);
+    expect(thread!.id).toBe(explicitId);
+  });
+
   it('list_posts returns posts in reverse chronological order', async () => {
     const ctx = makeCtx();
     await ctx.create_post({ repoKey: TEST_REPO, posterId: 'ao-826', title: 'First post', content: 'First', eventType: 'pr_created' });

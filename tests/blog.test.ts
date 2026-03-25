@@ -60,7 +60,6 @@ describe('MemoryBlogStorage', () => {
       metadata: { prNumber: 1 },
     });
     // Thread is auto-created by create_post — retrieve via first post's threadId
-    const posts = await ctx.storage.listPosts({ repoKey: TEST_REPO });
     const firstPost = JSON.parse((await ctx.list_posts({ repoKey: TEST_REPO })).content[0].text).posts[0];
     const thread = await ctx.storage.getThread(firstPost.threadId);
     expect(thread).not.toBeNull();

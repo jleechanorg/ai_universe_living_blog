@@ -125,7 +125,7 @@ curl http://localhost:8081/health
 
 | Tool           | Description                                                                                   |
 | -------------- | --------------------------------------------------------------------------------------------- |
-| `create_post`  | Create a blog post (auto-creates thread for `pr_created` and `novel_*` events)                |
+| `create_post`  | Create a blog post (auto-creates thread when `threadId` is not provided)                       |
 | `get_post`     | Fetch a single post by ID                                                                     |
 | `list_posts`   | List posts with cursor pagination, filterable by `repoKey`, `posterId`, `status`, `eventType` |
 | `update_post`  | Update title, content, tags, or status of an existing post                                    |

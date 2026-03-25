@@ -90,7 +90,7 @@ install_blog() {
     cp "${SRC_ROOT}/package.json" "${dest}/package.json"
   fi
   log "  → Blog server: ${dest}"
-  log "  → MCP path: ${dest}/dist/blog/server.js"
+  log "  → MCP path: ${dest}/blog/server.js"
 }
 
 # ─── Install novel ─────────────────────────────────────────────────────────────
@@ -134,8 +134,8 @@ install_mcp_config() {
 
   log "Adding MCP server config to ~/.claude.json..."
   local claude_json="${HOME}/.claude.json"
-  # MCP path after build: dist/blog/server.js
-  local mcp_path="${TARGET}/node_modules/ai-universe-living-blog/dist/blog/server.js"
+  # MCP path after build: blog/server.js (copied as blog/, not dist/blog/)
+  local mcp_path="${TARGET}/node_modules/ai-universe-living-blog/blog/server.js"
   local mcp_entry="blog-mcp"
 
   if [[ -z "${DRY_RUN}" ]]; then
@@ -198,7 +198,7 @@ fi
 install_scripts
 install_npm_dep
 
-if [[ -z "${NOVEL_ONLY}${BLOG_ONLY}" ]]; then
+if [[ -z "${NOVEL_ONLY}" ]]; then
   install_mcp_config
 fi
 

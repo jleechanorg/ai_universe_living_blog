@@ -47,7 +47,7 @@ On error, `result` is replaced with `error`:
 
 ### `create_post`
 
-Create a blog post. Auto-creates a thread for `pr_created` and `novel_*` event types.
+Create a blog post. Auto-creates a thread when `threadId` is omitted (regardless of event type).
 
 **Parameters:**
 
@@ -364,7 +364,7 @@ function runDailySummaryPipeline(
 }>;
 ```
 
-**Skips** if fewer than 3 posts exist for the target date. Posts `undefined` for `postId` and `wordCount` in this case.
+**Skips** if fewer than `minPostsForDailySummary` (default: 3) posts exist for the target date. Posts `undefined` for `postId` and `wordCount` in this case.
 
 **Pipeline steps:**
 
@@ -468,7 +468,7 @@ interface Thread {
 
 **`ThreadStatus`:** `'open'` (PR still active), `'merged'` (PR merged), `'closed'` (PR closed without merge).
 
-Threads are auto-created when the first `pr_created` or `novel_*` post is created with no `threadId`.
+Threads are auto-created when a post is created without a `threadId`.
 
 ---
 

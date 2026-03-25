@@ -147,13 +147,17 @@ Cloud Run is the recommended hosted option for the blog MCP server. It provides 
 FROM node:20-slim
 WORKDIR /app
 
-# Copy package files
+# Copy package files and install deps (no dev dependencies)
 COPY package.json package-lock.json* ./
-RUN npm ci --omit=dev && npm run build
+RUN npm ci --omit=dev
 
-# Copy source (TypeScript already compiled to dist/)
+# Copy source and build
+COPY src/ ./src/
+COPY tsconfig.json ./
+RUN npm run build
+
+# Copy built artifacts (dist/ already populated by build step above)
 COPY dist/ ./dist/
-COPY src/shared/ ./src/shared/
 
 # Non-root user for security
 RUN useradd --create-home appuser && chown -R appuser:appuser /app

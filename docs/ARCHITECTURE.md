@@ -284,7 +284,7 @@ The `top-level-editor.ts` system prompt is parameterized — it rewrites any con
 | HTTP transport for MCP (not stdio)     | Easier to test, debug, and deploy; compatible with Cloud Run                       |
 | In-memory storage by default           | Zero-config dev mode; no Firebase credentials needed                               |
 | Editor pass is graceful (not required) | Branch entries still post if API key is missing; daily summaries warn but continue |
-| 3-post minimum for daily summary       | Ensures enough material for a collective narrative                                 |
+| `minPostsForDailySummary`-configurable daily summary threshold | Ensures enough material for a collective narrative                                 |
 | Cursor-based pagination                | Stable under concurrent writes; avoids offset性能 issues                           |
 | repoKey as `owner/name`                | Explicit and unambiguous; avoids confusion with full URLs                          |
 | Bead IDs as `bd-{3chars}`              | Short, sortable, unambiguous; fits in tag fields                                   |

@@ -61,8 +61,14 @@ async function main() {
     const params = parseKvArgs(args.slice(1));
     const nc = await loadConfig(params['config']);
 
+    const repoKey = params['repo'] ?? nc.defaultRepoKey;
+    if (!repoKey || !repoKey.includes('/')) {
+      console.error('Error: --repo=owner/repo is required (or set defaultRepoKey in config)');
+      process.exit(1);
+    }
+
     const config: NovelEngineConfig = {
-      repoKey: (params['repo'] ?? nc.defaultRepoKey) as NovelEngineConfig['repoKey'],
+      repoKey: repoKey as NovelEngineConfig['repoKey'],
       sessionId: params['session'] ?? 'cli-unknown',
       branchName: params['branch'] ?? 'unknown',
       storage: new MemoryBlogStorage(),
@@ -93,8 +99,14 @@ async function main() {
     const params = parseKvArgs(args.slice(1));
     const nc = await loadConfig(params['config']);
 
+    const repoKey = params['repo'] ?? nc.defaultRepoKey;
+    if (!repoKey || !repoKey.includes('/')) {
+      console.error('Error: --repo=owner/repo is required (or set defaultRepoKey in config)');
+      process.exit(1);
+    }
+
     const config: NovelEngineConfig = {
-      repoKey: (params['repo'] ?? nc.defaultRepoKey) as NovelEngineConfig['repoKey'],
+      repoKey: repoKey as NovelEngineConfig['repoKey'],
       sessionId: params['session'] ?? 'cli-daily-summary',
       branchName: 'daily-summary',
       storage: new MemoryBlogStorage(),

@@ -237,7 +237,7 @@ export function estimateDayNumber(date: string, baseDate = '2026-03-25'): number
 }
 
 function renderBeadTrackerMarkdown(beadIds: string[]): string {
-  const lines = ['## Story Beats Tracker', '', '| Bead ID | Emotional Anchor |', '|---|---|---|'];
+  const lines = ['## Story Beats Tracker', '', '| Bead ID | Emotional Anchor |', '|---|---|'];
   const beadMap: Record<string, string> = {
     'bd-71p': 'Faithful persistence — the cursor blinks regardless',
     'bd-ky1': 'Time as extinction timer — counting minutes as survival',

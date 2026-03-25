@@ -143,10 +143,20 @@ export async function runBranchEntryPipeline(
  * runs the top-level editor pass, and posts as 'novel_daily_summary'.
  *
  * Skips posting if fewer than config.minPostsForDailySummary posts exist for the day.
+ *
+ * @param config  NovelEngineConfig — must include a BlogStorage instance holding
+ *                the day's posts. For CLI use, pass pre-fetched posts via
+ *                config.novelConfig._dailyPostsOverride to avoid needing a shared
+ *                storage instance.
+ * @param date    Target date (YYYY-MM-DD); defaults to today.
+ * @param posts   Optional pre-fetched posts. If provided, these are used instead of
+ *                calling fetchDailyPosts — enables the CLI to fetch via HTTP from
+ *                a running blog MCP server and pass the results directly.
  */
 export async function runDailySummaryPipeline(
   config: NovelEngineConfig,
   date?: string,
+  posts?: import('../shared/types.js').Post[],
 ): Promise<{ postId?: string; wordCount?: number; skipped?: boolean; reason?: string }> {
   const nc = { ...DEFAULT_NOVEL_CONFIG, ...config.novelConfig };
   const posterId = config.posterId ?? config.sessionId;
@@ -162,8 +172,10 @@ export async function runDailySummaryPipeline(
     minPosts: nc.minPostsForDailySummary,
   });
 
-  // Step 1: Fetch all posts for this day
-  const posts = await fetchDailyPosts(config.storage, config.repoKey, targetDate);
+  // Step 1: Use caller-provided posts if available; otherwise fetch from storage.
+  // The posts parameter enables CLI use (fetch via HTTP from blog MCP server)
+  // without requiring a shared storage instance.
+  posts ??= await fetchDailyPosts(config.storage, config.repoKey, targetDate);
 
   if (posts.length < nc.minPostsForDailySummary) {
     logger.info('Daily summary skipped — below minimum post threshold', {

@@ -38,7 +38,7 @@ A living blog that records every PR lifecycle event in a repository. It exposes 
 - `get_thread`, `list_threads` — thread (PR-level) organization
 - `health_check` — server health probe
 
-The blog stores posts in memory by default (zero config, no Firebase credentials needed). Storage is pluggable via the `BlogStorage` interface — swap to Firestore in production with the `--storage=firestore` flag.
+The blog stores posts in memory by default (zero config, no Firebase credentials needed). Storage is pluggable via the `BlogStorage` interface — swap to Firestore in production by implementing the interface and passing it to the server.
 
 **Event types** include `pr_created`, `pr_reviewed`, `pr_checks_passed`, `pr_merged`, `pr_closed`, and the novel types `novel_branch_entry` and `novel_daily_summary`.
 

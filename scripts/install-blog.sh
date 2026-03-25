@@ -2,9 +2,10 @@
 #
 # install-blog.sh — Install the blog MCP server into any repository
 #
-# This is a standalone install script. It clones ai_universe_living_blog to a
-# temp directory, copies src/blog and src/shared TypeScript source into the
-# target repo, then runs npm install && npm run build there.
+# Clones ai_universe_living_blog to a temp directory, builds the TypeScript,
+# then copies the compiled dist/ output to the target repo's
+# node_modules/ai-universe-living-blog/. This avoids touching the target's
+# src/ or overwriting its package.json.
 #
 # Usage:
 #   bash scripts/install-blog.sh --target=/path/to/your/repo
@@ -67,77 +68,81 @@ else
   log "Would clone ${REPO_URL} to ${REPO_DIR}"
 fi
 
-# ─── Verify source directories exist in the cloned repo ────────────────────────
-SRC_BLOG="${REPO_DIR}/src/blog"
-SRC_SHARED="${REPO_DIR}/src/shared"
-
+# ─── Build in temp dir ────────────────────────────────────────────────────────
 if [[ -z "${DRY_RUN}" ]]; then
-  if [[ ! -d "${SRC_BLOG}" ]]; then
-    die "src/blog not found in cloned repo — check the repository structure"
-  fi
-  if [[ ! -d "${SRC_SHARED}" ]]; then
-    die "src/shared not found in cloned repo — check the repository structure"
-  fi
+  log "Installing dependencies and building TypeScript..."
+  (cd "${REPO_DIR}" && npm install --silent 2>/dev/null && npm run build) \
+    || die "npm install/build failed in ${REPO_DIR}"
+else
+  log "Would run: cd ${REPO_DIR} && npm install && npm run build"
 fi
 
-# ─── Compute destination paths ─────────────────────────────────────────────────
-DEST_BLOG="${TARGET}/src/blog"
-DEST_SHARED="${TARGET}/src/shared"
-DEST_PKG="${TARGET}/package.json"
-SRC_PKG="${REPO_DIR}/package.json"
+# ─── Copy compiled output to target node_modules ────────────────────────────────
+DEST="${TARGET}/node_modules/ai-universe-living-blog"
 
-# ─── Check target package.json ─────────────────────────────────────────────────
 if [[ -z "${DRY_RUN}" ]]; then
-  if [[ ! -f "${DEST_PKG}" ]]; then
-    warn "No package.json found in target — creating one"
-    echo '{"name":"installed-blog","private":true}' > "${DEST_PKG}"
-  fi
-fi
-
-# ─── Copy TypeScript source ─────────────────────────────────────────────────────
-if [[ -z "${DRY_RUN}" ]]; then
-  log "Copying src/blog/ and src/shared/ to target..."
-  mkdir -p "${TARGET}/src"
-
-  # Copy blog (overwrite existing if reinstalling)
-  cp -r "${SRC_BLOG}" "${DEST_BLOG}"
-  log "  → ${DEST_BLOG}"
-
-  # Copy shared (overwrite existing)
-  cp -r "${SRC_SHARED}" "${DEST_SHARED}"
-  log "  → ${DEST_SHARED}"
-
-  # Copy package.json (preserves scripts, dependencies, exports field)
-  cp "${SRC_PKG}" "${DEST_PKG}"
-  log "  → ${DEST_PKG}"
-
-  # Create or update scripts/ directory with the blog install script
-  mkdir -p "${TARGET}/scripts"
-  cp "${REPO_DIR}/scripts/install-blog.sh" "${TARGET}/scripts/install-blog.sh"
-  chmod +x "${TARGET}/scripts/install-blog.sh"
-  log "  → ${TARGET}/scripts/install-blog.sh"
+  log "Copying compiled blog server to ${DEST}..."
+  mkdir -p "${DEST}"
+  # cp -rT merges src/ into dest/ without creating a nested subdirectory.
+  # --no-target-directory is not available on macOS; -T is the POSIX equivalent.
+  cp -rT "${REPO_DIR}/dist/blog" "${DEST}/blog"
+  cp -rT "${REPO_DIR}/dist/shared" "${DEST}/shared"
+  # Also copy novel dist since the blog server may depend on shared types
+  # that resolve via the package's own node_modules.
+  cp -rT "${REPO_DIR}/dist/novel" "${DEST}/novel"
+  cp "${REPO_DIR}/package.json" "${DEST}/package.json"
+  log "  → ${DEST}/blog/server.js"
 else
   log "Would copy:"
-  log "  ${SRC_BLOG}  → ${DEST_BLOG}"
-  log "  ${SRC_SHARED} → ${DEST_SHARED}"
-  log "  ${SRC_PKG}   → ${DEST_PKG}"
+  log "  ${REPO_DIR}/dist/blog/   → ${DEST}/blog/"
+  log "  ${REPO_DIR}/dist/shared/  → ${DEST}/shared/"
+  log "  ${REPO_DIR}/dist/novel/   → ${DEST}/novel/"
 fi
 
-# ─── Install dependencies and build ─────────────────────────────────────────────
-if [[ -z "${DRY_RUN}" ]]; then
-  if command -v npm &>/dev/null; then
-    log "Running npm install..."
-    (cd "${TARGET}" && npm install) || die "npm install failed"
-    log "Running npm run build..."
-    (cd "${TARGET}" && npm run build) || die "npm run build failed"
-  else
-    warn "npm not found — skipping install and build"
-    warn "Run the following manually in ${TARGET}:"
-    warn "  npm install && npm run build"
-  fi
-else
-  log "Would run in ${TARGET}: npm install && npm run build"
+# ─── Merge package.json scripts into target (non-destructive) ───────────────────
+if [[ -z "${DRY_RUN}" && -f "${TARGET}/package.json" ]]; then
+  log "Merging npm scripts into target package.json..."
+  # Use node to do a clean deep merge of scripts only (avoids bash JSON pitfalls)
+  node - <<'NODE_SCRIPT'
+    const fs = require('fs');
+    const targetPkg = JSON.parse(fs.readFileSync(process.argv[2], 'utf-8'));
+    const sourcePkg = JSON.parse(fs.readFileSync(process.argv[3], 'utf-8'));
+    // Only merge the scripts field, preserve everything else in target
+    if (sourcePkg.scripts) {
+      targetPkg.scripts = { ...(targetPkg.scripts || {}), ...sourcePkg.scripts };
+    }
+    // Add blog-specific peer deps if not present
+    if (!targetPkg.dependencies) targetPkg.dependencies = {};
+    const peerDeps = ['express', 'cors', 'uuid', 'winston', 'zod'];
+    for (const dep of peerDeps) {
+      if (!targetPkg.dependencies[dep] && sourcePkg.dependencies?.[dep]) {
+        targetPkg.dependencies[dep] = sourcePkg.dependencies[dep];
+      }
+    }
+    fs.writeFileSync(process.argv[2], JSON.stringify(targetPkg, null, 2) + '\n');
+    console.log('Merged scripts into', process.argv[2]);
+  -- "${TARGET}/package.json" "${REPO_DIR}/package.json" || {
+    warn "package.json merge failed — skipping (target package.json preserved)"
+  }
 fi
+
+# ─── Next steps ───────────────────────────────────────────────────────────────
+log ""
+log "Install complete!"
+log ""
+log "Next steps:"
+log "  1. cd ${TARGET} && npm install   # install any new peer dependencies"
+log "  2. Add to ~/.claude.json (MCP servers section):"
+log "     {"
+log "       \"blog-mcp\": {"
+log "         \"command\": \"node\","
+log "         \"args\": [\"${DEST}/blog/server.js\"]"
+log "       }"
+log "     }"
+log "  3. Restart Claude Code to load the MCP server"
+log "  4. npm run dev:blog  # start the blog MCP server (or: node ${DEST}/blog/server.js)"
+log ""
+log "Documentation: https://github.com/jleechanorg/ai_universe_living_blog/blob/main/docs/ARCHITECTURE.md"
 
 # ─── Cleanup ───────────────────────────────────────────────────────────────────
 cleanup() {
@@ -146,21 +151,3 @@ cleanup() {
   fi
 }
 trap cleanup EXIT
-
-# ─── Next steps ───────────────────────────────────────────────────────────────
-log ""
-log "Install complete!"
-log ""
-log "Next steps:"
-log "  1. cd ${TARGET}"
-log "  2. Add to ~/.claude.json (MCP servers section):"
-log "     {"
-log "       \"blog-mcp\": {"
-log "         \"command\": \"node\","
-log "         \"args\": [\"${TARGET}/node_modules/ai-universe-living-blog/dist/blog/server.js\"]"
-log "       }"
-log "     }"
-log "  3. Restart Claude Code to load the MCP server"
-log "  4. npm run dev:blog  # start the blog MCP server"
-log ""
-log "Documentation: https://github.com/jleechanorg/ai_universe_living_blog/blob/main/docs/ARCHITECTURE.md"

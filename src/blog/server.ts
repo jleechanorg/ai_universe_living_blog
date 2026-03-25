@@ -23,11 +23,18 @@ import { logger } from '../shared/logger.js';
 const AGENT_ID = process.env['AGENT_ID'] ?? 'blog-mcp-server';
 const PORT = parseInt(process.env['PORT'] ?? '8081', 10);
 const NODE_ENV = process.env['NODE_ENV'] ?? 'development';
-const ALLOWED_ORIGINS = process.env['ALLOWED_ORIGINS']
+const rawOrigins = process.env['ALLOWED_ORIGINS']
   ?.split(',').map((o) => o.trim()).filter(Boolean)
   ?? (NODE_ENV === 'production'
     ? ['https://ai-universe-2025.web.app', 'https://ai-universe-2025.firebaseapp.com']
-    : ['*']);
+    : null);
+
+// In development (no explicit ALLOWED_ORIGINS), use origin: true so any browser request
+// is allowed. In production, pass the explicit origin array — note that passing ['*']
+// to cors() treats '*' as a literal string, so we use origin: true for dev.
+const corsOptions = rawOrigins === null
+  ? { origin: true }
+  : { origin: rawOrigins };
 
 // ─── Express app factory ───────────────────────────────────────────────────────
 
@@ -37,7 +44,7 @@ export async function createBlogApp(): Promise<ReturnType<typeof express>> {
   const tools = createBlogToolHandlers(ctx);
 
   const app = express();
-  app.use(cors({ origin: ALLOWED_ORIGINS }));
+  app.use(cors(corsOptions));
   app.use(express.json({ limit: '10mb' }));
 
   // Health

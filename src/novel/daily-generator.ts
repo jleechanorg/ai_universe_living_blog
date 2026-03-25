@@ -66,7 +66,10 @@ export function generateDailySummary(context: DailySummaryContext): string {
   const totalPosts = posts.length;
   const threads = Array.from(byThread.keys());
   const prs = posts.filter((p) => p.metadata?.prNumber).map((p) => p.metadata!.prNumber!);
-  const errors = posts.filter((p) => p.metadata?.branchName).length;
+  const errors = posts.filter((p) =>
+    p.eventType === 'pr_checks_failed' ||
+    p.eventType === 'pr_closed',
+  ).length;
   const merged = posts.filter((p) => p.eventType === 'pr_merged').length;
   const created = posts.filter((p) => p.eventType === 'pr_created').length;
 

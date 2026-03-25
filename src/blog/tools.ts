@@ -143,10 +143,20 @@ export function createBlogToolHandlers(ctx: BlogToolContext) {
         };
 
         const created = await ctx.storage.createPost(post);
-        await ctx.storage.updateThread(resolvedThreadId, {
-          postCount: ((await ctx.storage.getThread(resolvedThreadId))?.postCount ?? 0) + 1,
-          latestPostAt: now,
-        });
+        // Thread postCount is best-effort — catch so a storage hiccup doesn't
+        // silently fail the whole post creation.
+        try {
+          await ctx.storage.updateThread(resolvedThreadId, {
+            postCount: ((await ctx.storage.getThread(resolvedThreadId))?.postCount ?? 0) + 1,
+            latestPostAt: now,
+          });
+        } catch (updateErr) {
+          logger.error('Thread postCount update failed — post was created', {
+            postId: created.id,
+            threadId: resolvedThreadId,
+            error: String(updateErr),
+          });
+        }
 
         logger.info('create_post OK', { postId: created.id, eventType: params.eventType, repoKey: params.repoKey });
         return toMcpResult({ success: true, post: created });

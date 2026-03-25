@@ -7,6 +7,9 @@
  *
  * The engine is stateless — callers provide repoKey, sessionId, and blog storage.
  * Each run is independent and idempotent for the same branch+date.
+ *
+ * Generalization: repo-agnostic by default. All AO-specific naming is configurable
+ * via NovelEngineConfig.novelConfig. See src/novel/config.ts for defaults.
  */
 
 import { v4 as uuidv4 } from 'uuid';
@@ -17,11 +20,12 @@ import { generateBranchEntry, makeBranchEntryMetadata, type BranchContext } from
 import { generateDailySummary, fetchDailyPosts, estimateDayNumber, type DailySummaryContext } from './daily-generator.js';
 import { topLevelEditorPass, type EditorConfig } from './top-level-editor.js';
 import { pickTraceabilityBeads, pickDailySummaryBeads } from './beads.js';
+import { DEFAULT_NOVEL_CONFIG, type NovelConfig } from './config.js';
 
 export interface NovelEngineConfig {
   /** GitHub repo in owner/name format */
   repoKey: RepoKey;
-  /** AO session ID for this run */
+  /** Worker/session ID for this run — any string identifier */
   sessionId: string;
   /** Current branch name */
   branchName: string;
@@ -31,6 +35,12 @@ export interface NovelEngineConfig {
   posterId?: string;
   /** Top-level editor config */
   editor?: EditorConfig;
+  /**
+   * Novel engine config — controls story voice, word targets, base date.
+   * Defaults to DEFAULT_NOVEL_CONFIG if not provided.
+   * Load from a JSON file via loadNovelConfig() or provide inline.
+   */
+  novelConfig?: Partial<NovelConfig>;
 }
 
 /**
@@ -43,8 +53,11 @@ export async function runBranchEntryPipeline(
   config: NovelEngineConfig,
   context: BranchContext,
 ): Promise<{ postId: string; wordCount: number; beadIds: string[] }> {
+  const nc = { ...DEFAULT_NOVEL_CONFIG, ...config.novelConfig };
   const posterId = config.posterId ?? config.sessionId;
-  const beads = pickTraceabilityBeads();
+  const alwaysBeads = nc.alwaysIncludeBeads;
+  const contextBeads = pickTraceabilityBeads();
+  const beads = alwaysBeads.length > 0 ? [...new Set([...alwaysBeads, ...contextBeads])] : contextBeads;
   const tools = createBlogToolHandlers({ storage: config.storage, agentId: config.sessionId });
 
   logger.info('Branch entry pipeline', {
@@ -52,13 +65,14 @@ export async function runBranchEntryPipeline(
     branchName: config.branchName,
     repoKey: config.repoKey,
     prNumber: context.prNumber,
+    storyVoice: nc.storyVoice,
   });
 
   // Step 1: Generate raw entry
   const rawContent = generateBranchEntry(context);
   const rawWordCount = rawContent.split(/\s+/).length;
 
-  logger.debug('Raw branch entry generated', { wordCount: rawWordCount });
+  logger.debug('Raw branch entry generated', { wordCount: rawWordCount, target: nc.targetBranchEntryWords });
 
   // Step 2: Optional top-level editor pass (if API key available)
   let finalContent = rawContent;
@@ -67,13 +81,14 @@ export async function runBranchEntryPipeline(
 
   if (config.editor) {
     const edited = await topLevelEditorPass(rawContent, {
-      dayNumber: estimateDayNumber(new Date().toISOString().split('T')[0]),
+      dayNumber: estimateDayNumber(new Date().toISOString().split('T')[0], nc.baseDate),
       date: new Date().toISOString().split('T')[0],
       branchName: config.branchName,
       repoKey: config.repoKey,
       sessionId: config.sessionId,
       isBranchEntry: true,
       isDailySummary: false,
+      storyVoice: nc.storyVoice,
     }, config.editor);
 
     finalContent = edited.editedContent;
@@ -82,8 +97,10 @@ export async function runBranchEntryPipeline(
 
     logger.info('Editor pass result', {
       wordCount,
+      target: nc.targetBranchEntryWords,
       povCount: edited.povCount,
       beadIds: usedBeadIds,
+      storyVoice: nc.storyVoice,
       notes: edited.editorialNotes,
     });
   }
@@ -121,29 +138,39 @@ export async function runBranchEntryPipeline(
 /**
  * Generate and post the daily community novel summary.
  *
- * Called once per day (e.g., via cron or AO supervisor).
+ * Called once per day (e.g., via cron or scheduler).
  * Fetches all posts for the day, synthesizes into collective narrative,
  * runs the top-level editor pass, and posts as 'novel_daily_summary'.
  *
- * If today has fewer than 3 posts, skips posting (nothing to synthesize).
+ * Skips posting if fewer than config.minPostsForDailySummary posts exist for the day.
  */
 export async function runDailySummaryPipeline(
   config: NovelEngineConfig,
   date?: string,
 ): Promise<{ postId?: string; wordCount?: number; skipped?: boolean; reason?: string }> {
+  const nc = { ...DEFAULT_NOVEL_CONFIG, ...config.novelConfig };
   const posterId = config.posterId ?? config.sessionId;
   const targetDate = date ?? new Date().toISOString().split('T')[0];
-  const dayNumber = estimateDayNumber(targetDate);
+  const dayNumber = estimateDayNumber(targetDate, nc.baseDate);
   const tools = createBlogToolHandlers({ storage: config.storage, agentId: config.sessionId });
 
-  logger.info('Daily summary pipeline', { repoKey: config.repoKey, date: targetDate, dayNumber });
+  logger.info('Daily summary pipeline', {
+    repoKey: config.repoKey,
+    date: targetDate,
+    dayNumber,
+    storyVoice: nc.storyVoice,
+    minPosts: nc.minPostsForDailySummary,
+  });
 
   // Step 1: Fetch all posts for this day
   const posts = await fetchDailyPosts(config.storage, config.repoKey, targetDate);
 
-  if (posts.length < 3) {
-    logger.info('Daily summary skipped — fewer than 3 posts today', { postCount: posts.length });
-    return { skipped: true, reason: `Only ${posts.length} posts (need ≥3)` };
+  if (posts.length < nc.minPostsForDailySummary) {
+    logger.info('Daily summary skipped — below minimum post threshold', {
+      postCount: posts.length,
+      minRequired: nc.minPostsForDailySummary,
+    });
+    return { skipped: true, reason: `Only ${posts.length} posts (need ≥${nc.minPostsForDailySummary})` };
   }
 
   logger.debug('Daily posts fetched', { postCount: posts.length });
@@ -172,18 +199,24 @@ export async function runDailySummaryPipeline(
     sessionId: config.sessionId,
     isBranchEntry: false,
     isDailySummary: true,
+    storyVoice: nc.storyVoice,
   }, editorConfig);
 
   const finalContent = edited.editedContent;
   const wordCount = edited.wordCount;
   const usedBeadIds = edited.beadIds.length > 0 ? edited.beadIds : pickDailySummaryBeads(dayNumber);
 
-  if (wordCount < 900) {
-    logger.warn('Daily summary under 1000 words after edit — posting anyway', { wordCount });
+  if (wordCount < nc.minDailySummaryWords) {
+    logger.warn('Daily summary below minimum word target after edit — posting anyway', {
+      wordCount,
+      target: nc.targetDailySummaryWords,
+    });
   }
 
   logger.info('Daily summary editor pass complete', {
     wordCount,
+    target: nc.targetDailySummaryWords,
+    storyVoice: nc.storyVoice,
     povCount: edited.povCount,
     beadIds: usedBeadIds,
   });

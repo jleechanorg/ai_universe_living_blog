@@ -25,6 +25,7 @@
 
 import { logger } from '../shared/logger.js';
 import { getAllBeads } from './beads.js';
+import { STORY_VOICE_PROMPTS } from './config.js';
 
 export interface EditorConfig {
   /** Override the LLM model for editing. Defaults to 'claude-sonnet-4-6'. */
@@ -63,6 +64,8 @@ export async function topLevelEditorPass(
     sessionId: string;
     isBranchEntry: boolean;
     isDailySummary: boolean;
+    /** Story voice for the top-level editor pass. Defaults to 'workers'. */
+    storyVoice?: 'workers' | 'agents' | 'minimal';
   },
   config: EditorConfig = {},
 ): Promise<EditorResult> {
@@ -83,10 +86,13 @@ export async function topLevelEditorPass(
 
   const model = config.model ?? 'claude-sonnet-4-6';
   const editorialNotes: string[] = [];
+  const voice = context.storyVoice ?? 'workers';
+  const voicePrompt = STORY_VOICE_PROMPTS[voice];
 
-  const systemPrompt = `You are a top-level editor for a serialized AI worker fiction called "The Daily Lives of Workers."
+  const systemPrompt = `${voicePrompt}
+
 You are editing entries for the ${context.isDailySummary ? 'daily community summary' : 'branch-level entry'}.
-You edit in the voice and style of PR #680 — the Composio upstream serialized literary chapters.
+You edit in the voice and style of serialized literary chapters — emotional, precise, community-framed.
 
 STYLE REQUIREMENTS (follow precisely):
 1. EMOTIONAL THESIS — first italicized line after the day header: "*Emotional thesis: [one sentence that names the feeling]*"

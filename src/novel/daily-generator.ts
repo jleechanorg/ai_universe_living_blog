@@ -229,9 +229,8 @@ function deriveDailyThesis(ctx: { totalPosts: number; threads: number; merged: n
   return `The ordinary continuation of work that does not end even when the session does`;
 }
 
-export function estimateDayNumber(date: string): number {
-  // Rough heuristic: count days since 2026-03-25
-  const base = new Date('2026-03-25');
+export function estimateDayNumber(date: string, baseDate = '2026-03-25'): number {
+  const base = new Date(baseDate);
   const d = new Date(date);
   const diff = Math.floor((d.getTime() - base.getTime()) / 86_400_000);
   return Math.max(1, diff + 1);

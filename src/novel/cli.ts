@@ -4,14 +4,27 @@
  * Novel CLI — invoke novel engine operations from the command line.
  *
  * Usage:
- *   npm run dev:novel -- branch-entry --repo owner/repo --session ao-826 --branch feat/foo
- *   npm run dev:novel -- daily-summary --repo owner/repo --session ao-826
- *   npm run dev:novel -- daily-summary --repo owner/repo --session ao-826 --date 2026-03-25
+ *   npm run dev:novel -- branch-entry --repo owner/repo --session ID --branch name
+ *   npm run dev:novel -- daily-summary --repo owner/repo --session ID
+ *   npm run dev:novel -- branch-entry --repo owner/repo --session ID --branch name --voice agents
+ *   npm run dev:novel -- branch-entry --repo owner/repo --session ID --branch name --config ./novel.config.json
+ *
+ * Options:
+ *   --repo=owner/repo     GitHub repo (required unless --config sets defaultRepoKey)
+ *   --session=ID          Worker/session identifier (required)
+ *   --branch=name          Branch name (required for branch-entry)
+ *   --pr=N                PR number (optional)
+ *   --sha=SHA              Commit SHA (optional)
+ *   --errors=a,b           Comma-separated error messages (optional)
+ *   --voice=workers|agents|minimal   Story voice override (default: workers)
+ *   --date=YYYY-MM-DD     Date for daily-summary (default: today)
+ *   --config=<path>       Load config from JSON file (optional)
  */
 
 import { MemoryBlogStorage } from '../blog/storage.js';
 import { runBranchEntryPipeline, runDailySummaryPipeline, type NovelEngineConfig } from './engine.js';
 import type { BranchContext } from './branch-generator.js';
+import { loadNovelConfig, type NovelConfig } from './config.js';
 
 const args = process.argv.slice(2);
 const command = args[0];
@@ -37,15 +50,23 @@ function parseKvArgs(kvs: string[]): Record<string, string> {
   return result;
 }
 
+async function loadConfig(configPath?: string): Promise<NovelConfig> {
+  if (configPath) return loadNovelConfig(configPath);
+  // Try default locations in order; loadNovelConfig returns DEFAULT on missing file
+  return loadNovelConfig('./novel.config.json');
+}
+
 async function main() {
   if (command === 'branch-entry') {
     const params = parseKvArgs(args.slice(1));
+    const nc = await loadConfig(params['config']);
 
     const config: NovelEngineConfig = {
-      repoKey: params['repo'] ?? 'jleechanorg/ai_universe_living_blog',
+      repoKey: (params['repo'] ?? nc.defaultRepoKey) as NovelEngineConfig['repoKey'],
       sessionId: params['session'] ?? 'cli-unknown',
       branchName: params['branch'] ?? 'unknown',
       storage: new MemoryBlogStorage(),
+      novelConfig: nc,
     };
 
     const context: BranchContext = {
@@ -70,12 +91,14 @@ async function main() {
 
   if (command === 'daily-summary') {
     const params = parseKvArgs(args.slice(1));
+    const nc = await loadConfig(params['config']);
 
     const config: NovelEngineConfig = {
-      repoKey: params['repo'] ?? 'jleechanorg/ai_universe_living_blog',
+      repoKey: (params['repo'] ?? nc.defaultRepoKey) as NovelEngineConfig['repoKey'],
       sessionId: params['session'] ?? 'cli-daily-summary',
       branchName: 'daily-summary',
       storage: new MemoryBlogStorage(),
+      novelConfig: nc,
     };
 
     const result = await runDailySummaryPipeline(config, params['date']);
@@ -89,13 +112,35 @@ async function main() {
 Commands:
   branch-entry --repo=owner/repo --session=ID --branch=name [--pr=N] [--sha=SHA] [--errors=a,b]
     Generate and post a per-branch novel entry to the blog.
+    Uses --voice to override the story persona (workers | agents | minimal).
 
   daily-summary --repo=owner/repo --session=ID [--date=YYYY-MM-DD]
     Generate and post the daily community novel summary.
-    Requires ≥3 posts for the day. Skips if fewer.
+    Posts only if there are ≥minPostsForDailySummary posts for the day (default: 3).
+    Configure via --config or novel.config.json.
 
   help
     Show this message.
+
+Options:
+  --repo=owner/repo     GitHub repo in "owner/name" format (required or set in config)
+  --session=ID          Worker/session identifier (required)
+  --branch=name         Branch name (required for branch-entry)
+  --pr=N                PR number
+  --sha=SHA             Commit SHA
+  --errors=a,b          Comma-separated error messages
+  --voice=V             Story voice: workers | agents | minimal (default: workers)
+  --date=YYYY-MM-DD     Target date for daily summary (default: today)
+  --config=<path>       Load config from a JSON file (see docs/CONFIGURATION.md)
+
+Configuration file example (novel.config.json):
+{
+  "defaultRepoKey": "myorg/my-repo",
+  "storyVoice": "agents",
+  "baseDate": "2026-04-01",
+  "targetDailySummaryWords": 1200,
+  "minPostsForDailySummary": 2
+}
 `);
     return;
   }

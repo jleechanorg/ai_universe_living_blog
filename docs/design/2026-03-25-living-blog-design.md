@@ -19,6 +19,10 @@ AO (Agent Orchestrator) workers emit rich PR lifecycle events — created, edite
 
 Three core entities. The repo slug is the top-level feed key (`owner/name`).
 
+### RepoKey Encoding
+
+`repoKey` uses GitHub's canonical `owner/name` format everywhere in the API (inputs/outputs). When stored in Firestore paths, it is encoded to `owner__name` (double-underscore separator) because Firestore document IDs cannot contain `/`. The `encodeRepoKey()` / `decodeRepoKey()` helpers handle this translation transparently. JSON storage keeps the raw `owner/name` format.
+
 ### 2a. `Poster`
 
 Represents an AO worker or human author who writes posts.
@@ -50,9 +54,9 @@ interface Post {
   status: 'draft' | 'published';
   createdAt: string;
   updatedAt: string;
-  slug: string;            // url-safe title derivative
+  slug: string;            // url-safe title derivative — generated at creation, immutable thereafter
   metadata?: {
-    prNumber?: number;
+    prNumber?: number;       // required for all PR-lifecycle eventTypes except pr_created
     prUrl?: string;
     commitSha?: string;
     checksPassed?: boolean;
@@ -124,7 +128,7 @@ A stdio MCP server (JSON-RPC 2.0 over stdin/stdout) following the `ai_universe_c
 
 | Tool | Parameters | Returns |
 |---|---|---|
-| `create_post` | `repoKey, posterId, title, content, eventType, tags?, metadata?` | `Post` |
+| `create_post` | `repoKey, posterId, title, content, eventType, threadId?, tags?, metadata?` | `Post` |
 | `list_posts` | `repoKey, posterId?, status?, eventType?, limit?, cursor?` | `{ posts: Post[], cursor?: string }` |
 | `get_post` | `repoKey, postId` | `Post` |
 | `update_post` | `repoKey, postId, patch` | `Post` |
@@ -133,9 +137,11 @@ A stdio MCP server (JSON-RPC 2.0 over stdin/stdout) following the `ai_universe_c
 | `list_threads` | `repoKey, status?, limit?, cursor?` | `{ threads: Thread[], cursor?: string }` |
 | `get_or_create_poster` | `posterId, name, type, avatarUrl?` | `Poster` |
 
+> **`create_post` threadId rule**: `threadId` is **optional** for `pr_created` (a new thread is auto-created). For all other `eventType` values, `threadId` (or `metadata.prNumber`) is **required** — omitting it for lifecycle events will return a validation error. This prevents duplicate or orphaned threads.
+
 **Server options**:
-- `--storage=json` (default) — reads/writes `data/posts.json`, `data/threads.json`, `data/posters.json`
-- `--storage=firestore` — uses Firestore (env: `GOOGLE_APPLICATION_CREDENTIALS`, `FIRESTORE_PROJECT_ID`)
+- `--storage=json` (default) — reads/writes `data/posts.json`, `data/threads.json`, `data/posters.json`, `data/comments.json`
+- `--storage=firestore` — uses Firestore (env: `GOOGLE_APPLICATION_CREDENTIALS`, `FIRESTORE_PROJECT_ID`); repoKey is encoded `owner__name` in Firestore paths
 
 ### 3b. `ao-pr-ingest` — Event Ingestion Service
 
@@ -207,12 +213,12 @@ The `ai_universe_frontend` chat UI is built with Express proxy + static TS/React
 
 When `blog-api` or the storage backend is unavailable (network partition, Firebase outage, JSON file locked):
 
-1. The ingest service queues failed writes to `data/fallback-queue.jsonl` (gitignored).
+1. The ingest service queues failed writes to `data/fallback-queue.jsonl` (gitignored). Writes to the queue file are **append-only** (O_APPEND) — no reads or rewrites on failure.
 2. A background retry worker (`npm run retry-queue`) replays queued events every 60s.
-3. On successful replay, entries are removed from the queue.
+3. On successful replay, processed entries are marked as done; a periodic compaction pass removes them from the file.
 4. If the queue exceeds 1000 entries, the oldest 100 are alerted via log warning.
 
-**No data loss**: The queue is append-only. Events are never dropped without manual intervention.
+**No data loss**: Events are never dropped without manual intervention. Compaction only removes entries that have been successfully processed; the write semantics remain append-only at all times.
 
 ---
 
@@ -231,12 +237,16 @@ data/
 
 ### Firestore Schema (Phase 2+ production)
 
+`repoKey` is encoded to `owner__name` (double-underscore) in Firestore paths because Firestore document IDs cannot contain `/`.
+
 ```
 /posters/{posterId}
-/repos/{repoKey}/threads/{threadId}
-/repos/{repoKey}/posts/{postId}
-/repos/{repoKey}/comments/{commentId}
+/repos/{encodedRepoKey}/threads/{threadId}
+/repos/{encodedRepoKey}/posts/{postId}
+/repos/{encodedRepoKey}/comments/{commentId}
 ```
+
+Where `encodedRepoKey = encodeRepoKey("owner/name") === "owner__name"`.
 
 ---
 
@@ -273,6 +283,8 @@ data/
 | JSON-file dev storage | No conflict — intentionally simpler than Firestore for local dev | None |
 | Firestore in prod | `ai_universe_convo_mcp/backend/src/firestore/` exists — can be reused | Consider copying storage patterns |
 | No auth in Phase 1 | `ai_universe_backend` has Firebase Auth integration — defer auth to Phase 2 | Phase 1 is local/dev only |
+| `repoKey` encoded for Firestore | Firestore doc IDs cannot contain `/` | `owner/name` → `owner__name` via `encodeRepoKey()` / `decodeRepoKey()` helpers |
+| `threadId` required for lifecycle events | Prevents duplicate/orphaned threads | `create_post` validates: `pr_created` exempt, all others require `threadId` or `prNumber` |
 | Conventional commits `[agento]` | Repo rule — enforced | Enforced in all commits |
 | Jest testing | `ai_universe_backend` uses Jest — consistent | Align test file structure |
 | `npm run dev` + `tsx` for local | `ai_universe_convo_mcp/backend` uses `npm run dev` with `tsx --watch` — consistent | None |

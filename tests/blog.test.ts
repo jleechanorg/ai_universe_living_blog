@@ -171,7 +171,7 @@ describe('MemoryBlogStorage', () => {
     await ctx.create_post({ repoKey: TEST_REPO, posterId: 'ao-826', title: 'P1', content: 'P1', eventType: 'pr_created', threadId });
     await ctx.create_post({ repoKey: TEST_REPO, posterId: 'ao-826', title: 'P2', content: 'P2', eventType: 'pr_merged', threadId });
 
-    const result = await ctx.get_thread({ threadId });
+    const result = await ctx.get_thread({ repoKey: TEST_REPO, threadId });
     const parsed = JSON.parse(result.content[0].text);
     expect(parsed.thread.id).toBe(threadId);
     expect(parsed.posts).toHaveLength(2);

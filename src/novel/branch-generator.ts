@@ -15,8 +15,7 @@
  * Output format: ~400-800 word branch entry in The Daily Lives of Workers voice.
  */
 
-import { logger } from '../shared/logger.js';
-import { pickTraceabilityBeads, renderBeadTrackerTable } from './beads.js';
+import { pickTraceabilityBeads } from './beads.js';
 import type { RepoKey } from '../shared/types.js';
 
 export interface BranchContext {
@@ -70,7 +69,10 @@ export function generateBranchEntry(context: BranchContext): string {
     lines.push('### What happened');
     lines.push('');
     for (const event of events.slice(0, 6)) {
-      const t = new Date(event.timestamp).toISOString().replace('T', ' ').slice(0, 16);
+      const d = new Date(event.timestamp);
+      const t = Number.isNaN(d.getTime())
+        ? event.timestamp
+        : d.toISOString().replace('T', ' ').slice(0, 16);
       lines.push(`- **${t}** — ${event.message}`);
     }
     lines.push('');

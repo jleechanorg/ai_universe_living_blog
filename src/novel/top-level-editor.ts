@@ -24,7 +24,6 @@
  */
 
 import { logger } from '../shared/logger.js';
-import type { StoryBead } from '../shared/types.js';
 import { getAllBeads } from './beads.js';
 
 export interface EditorConfig {

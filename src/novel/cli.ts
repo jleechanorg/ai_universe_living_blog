@@ -16,18 +16,30 @@ import type { BranchContext } from './branch-generator.js';
 const args = process.argv.slice(2);
 const command = args[0];
 
-async function parseKvArgs(kvs: string[]): Promise<Record<string, string>> {
+function parseKvArgs(kvs: string[]): Record<string, string> {
   const result: Record<string, string> = {};
-  for (const kv of kvs) {
-    const [k, v] = kv.split('=');
-    if (k && v !== undefined) result[k.replace(/^--/, '')] = v;
+  for (let i = 0; i < kvs.length; i++) {
+    const kv = kvs[i]!;
+    if (!kv.startsWith('--')) continue;
+    if (kv.includes('=')) {
+      // --key=value
+      const [k, ...rest] = kv.split('=');
+      if (k) result[k.replace(/^--/, '')] = rest.join('=');
+    } else {
+      // --key value  (next arg is the value, not a flag)
+      const next = kvs[i + 1];
+      if (next !== undefined && !next.startsWith('--')) {
+        result[kv.replace(/^--/, '')] = next;
+        i++; // skip the value on next iteration
+      }
+    }
   }
   return result;
 }
 
 async function main() {
   if (command === 'branch-entry') {
-    const params = await parseKvArgs(args.slice(1));
+    const params = parseKvArgs(args.slice(1));
 
     const config: NovelEngineConfig = {
       repoKey: params['repo'] ?? 'jleechanorg/ai_universe_living_blog',
@@ -57,7 +69,7 @@ async function main() {
   }
 
   if (command === 'daily-summary') {
-    const params = await parseKvArgs(args.slice(1));
+    const params = parseKvArgs(args.slice(1));
 
     const config: NovelEngineConfig = {
       repoKey: params['repo'] ?? 'jleechanorg/ai_universe_living_blog',

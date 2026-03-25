@@ -80,14 +80,14 @@ install_blog() {
   local dest="${TARGET}/node_modules/ai-universe-living-blog"
   if [[ -z "${DRY_RUN}" ]]; then
     mkdir -p "${dest}"
-    cp -r "${SRC_ROOT}/src/blog" "${dest}/"
-    cp -r "${SRC_ROOT}/src/shared" "${dest}/"
-    cp "${SRC_ROOT}/package.json" "${dest}/package.json"
-    # Build TypeScript so dist/ exists
-    if command -v npm &>/dev/null && [[ -f "${dest}/package.json" ]]; then
-      (cd "${dest}" && npm install --silent 2>/dev/null && npm run build 2>/dev/null) || \
-        warn "npm build in ${dest} failed — build manually: cd ${dest} && npm install && npm run build"
+    # Build TypeScript first so dist/ exists — single authoritative build step
+    if command -v npm &>/dev/null && [[ -f "${SRC_ROOT}/package.json" ]]; then
+      (cd "${SRC_ROOT}" && npm install --silent 2>/dev/null && npm run build) || \
+        die "npm build failed in ${SRC_ROOT} — cannot install"
     fi
+    cp -r "${SRC_ROOT}/dist/blog" "${dest}/"
+    cp -r "${SRC_ROOT}/dist/shared" "${dest}/"
+    cp "${SRC_ROOT}/package.json" "${dest}/package.json"
   fi
   log "  → Blog server: ${dest}"
   log "  → MCP path: ${dest}/dist/blog/server.js"
@@ -99,13 +99,14 @@ install_novel() {
   local dest="${TARGET}/node_modules/ai-universe-living-blog"
   if [[ -z "${DRY_RUN}" ]]; then
     mkdir -p "${dest}"
-    cp -r "${SRC_ROOT}/src/novel" "${dest}/"
-    cp -r "${SRC_ROOT}/src/shared" "${dest}/"
-    cp "${SRC_ROOT}/package.json" "${dest}/package.json"
-    if command -v npm &>/dev/null && [[ -f "${dest}/package.json" ]]; then
-      (cd "${dest}" && npm install --silent 2>/dev/null && npm run build 2>/dev/null) || \
-        warn "npm build in ${dest} failed — build manually"
+    # Build TypeScript first so dist/ exists — single authoritative build step
+    if command -v npm &>/dev/null && [[ -f "${SRC_ROOT}/package.json" ]]; then
+      (cd "${SRC_ROOT}" && npm install --silent 2>/dev/null && npm run build) || \
+        die "npm build failed in ${SRC_ROOT} — cannot install"
     fi
+    cp -r "${SRC_ROOT}/dist/novel" "${dest}/"
+    cp -r "${SRC_ROOT}/dist/shared" "${dest}/"
+    cp "${SRC_ROOT}/package.json" "${dest}/package.json"
   fi
   log "  → Novel engine: ${dest}/dist/novel/engine.js"
   log "  → CLI: node ${dest}/dist/novel/cli.js"
@@ -168,7 +169,8 @@ install_npm_dep() {
   if [[ -z "${DRY_RUN}" && -f "${TARGET}/package.json" ]]; then
     if command -v npm &>/dev/null; then
       if ! (cd "${TARGET}" && npm install --save ai-universe-living-blog@latest 2>/dev/null); then
-        warn "npm install failed — install manually: npm install ai-universe-living-blog"
+        warn "npm install failed — package not yet published to npm."
+        warn "Install complete via dist/ copy. Publish to npm when ready."
       fi
     else
       warn "npm not found — add 'ai-universe-living-blog' to ${TARGET}/package.json manually"

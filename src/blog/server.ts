@@ -67,7 +67,14 @@ export async function createBlogApp(): Promise<ReturnType<typeof express>> {
 
   // JSON-RPC 2.0 handler
   app.post('/mcp', async (req, res) => {
-    const { jsonrpc, id, method, params } = req.body as {
+    const body = req.body;
+    if (typeof body !== 'object' || body === null) {
+      return res.json({
+        jsonrpc: '2.0', id: null,
+        error: { code: -32600, message: 'Invalid Request — JSON object required' },
+      });
+    }
+    const { jsonrpc, id, method, params } = body as {
       jsonrpc?: string; id?: unknown; method?: string; params?: unknown;
     };
 

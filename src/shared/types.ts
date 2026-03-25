@@ -86,6 +86,8 @@ export interface Post {
   updatedAt: string; // ISO-8601
   slug: string;
   metadata?: PostMetadata;
+  /** Monotonic insertion sequence number for stable sort when timestamps collide */
+  seq?: number;
 }
 
 export const PostSchema = z.object({

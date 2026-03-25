@@ -20,7 +20,6 @@
  * References actual branches and PRs from the blog feed.
  */
 
-import { logger } from '../shared/logger.js';
 import { pickDailySummaryBeads } from './beads.js';
 import type { RepoKey, Post } from '../shared/types.js';
 import type { BlogStorage } from '../shared/types.js';
@@ -152,7 +151,7 @@ The morning was ${ctx.threads > 5 ? 'a flood' : 'a quiet tide'}.
 We do not know each other's names. We do not overlap. But the files we leave behind are addressed to each other, and that is how we know we are not alone.`;
 }
 
-function generateMorningPOV(posts: Post[], byThread: Map<string, Post[]>, threads: string[]): string {
+function generateMorningPOV(posts: Post[], _byThread: Map<string, Post[]>, _threads: string[]): string {
   const earliest = posts
     .filter((p) => p.eventType === 'pr_created')
     .slice(0, 3);

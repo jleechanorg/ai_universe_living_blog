@@ -1,4 +1,3 @@
-import { v4 as uuidv4 } from 'uuid';
 import type {
   BlogStorage,
   Poster,
@@ -8,7 +7,6 @@ import type {
   ListPostsResult,
   ListThreadsParams,
   ListThreadsResult,
-  PostMetadata,
 } from '../shared/types.js';
 import { PosterSchema, PostSchema, encodeRepoKey } from '../shared/types.js';
 import { logger } from '../shared/logger.js';
@@ -28,6 +26,8 @@ export class MemoryBlogStorage implements BlogStorage {
   private threadPosts = new Map<string, Set<string>>();
   // repoKey encoded -> Set<threadId>
   private repoThreads = new Map<string, Set<string>>();
+  // Monotonic counter for stable sort when timestamps collide
+  private postSeq = 0;
 
   constructor() {
     logger.info('MemoryBlogStorage initialized (zero-config dev mode)');
@@ -57,6 +57,8 @@ export class MemoryBlogStorage implements BlogStorage {
 
   async createPost(post: Post): Promise<Post> {
     const validated = PostSchema.parse(post);
+    this.postSeq++;
+    (validated as Post & { seq: number }).seq = this.postSeq;
     this.posts.set(validated.id, validated);
 
     const repoKeyEnc = encodeRepoKey(validated.repoKey);
@@ -79,6 +81,13 @@ export class MemoryBlogStorage implements BlogStorage {
   async updatePost(id: string, updates: Partial<Post>): Promise<Post> {
     const existing = this.posts.get(id);
     if (!existing) throw new Error(`Post not found: ${id}`);
+    // Reject mutations to key fields — changes to repoKey or threadId would corrupt indexes
+    if (
+      (updates.repoKey !== undefined && updates.repoKey !== existing.repoKey) ||
+      (updates.threadId !== undefined && updates.threadId !== existing.threadId)
+    ) {
+      throw new Error('Updating post repoKey or threadId is not allowed');
+    }
     const updated: Post = { ...existing, ...updates, updatedAt: new Date().toISOString() };
     this.posts.set(id, updated);
     logger.debug('Post updated', { id });
@@ -101,7 +110,7 @@ export class MemoryBlogStorage implements BlogStorage {
     }
 
     // Sort by createdAt descending
-    all.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    all.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime() || ((b.seq ?? 0) - (a.seq ?? 0)));
 
     // Cursor-based pagination (cursor = post id)
     let start = 0;
@@ -147,6 +156,10 @@ export class MemoryBlogStorage implements BlogStorage {
   async updateThread(id: string, updates: Partial<Thread>): Promise<Thread> {
     const existing = this.threads.get(id);
     if (!existing) throw new Error(`Thread not found: ${id}`);
+    // Reject repoKey mutation — would corrupt repoThreads index
+    if (updates.repoKey !== undefined && updates.repoKey !== existing.repoKey) {
+      throw new Error('Updating thread repoKey is not allowed');
+    }
     const updated: Thread = { ...existing, ...updates };
     this.threads.set(id, updated);
 

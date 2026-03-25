@@ -1,21 +1,19 @@
 import { v4 as uuidv4 } from 'uuid';
 import { z } from 'zod';
-import type { BlogStorage, RepoKey, PostEventType } from '../shared/types.js';
+import type { BlogStorage, RepoKey } from '../shared/types.js';
 import {
   RepoKeySchema,
   PostEventTypeSchema,
   PostSchema,
   ThreadStatusSchema,
-  encodeRepoKey,
   type Post,
   type Thread,
-  type ThreadStatus,
 } from '../shared/types.js';
 import { logger } from '../shared/logger.js';
 
 // ─── Tool parameter schemas ────────────────────────────────────────────────────
 
-export const CreatePostParams = z.object({
+export const CreatePostParamsSchema = z.object({
   repoKey: RepoKeySchema,
   posterId: z.string().min(1),
   title: z.string().min(1).max(500),
@@ -25,7 +23,7 @@ export const CreatePostParams = z.object({
   tags: z.array(z.string()).default([]),
   metadata: PostSchema.shape.metadata.optional(),
 });
-export type CreatePostParams = z.infer<typeof CreatePostParams>;
+export type CreatePostParams = z.infer<typeof CreatePostParamsSchema>;
 
 export const ListPostsParams = z.object({
   repoKey: RepoKeySchema,
@@ -75,7 +73,7 @@ export function createBlogToolHandlers(ctx: BlogToolContext) {
   return {
     async create_post(rawParams: unknown) {
       try {
-        const params = await CreatePostParams.parseAsync(rawParams);
+        const params = await CreatePostParamsSchema.parseAsync(rawParams);
 
         // Ensure poster exists
         const poster = await ctx.storage.getOrCreatePoster({
@@ -126,6 +124,15 @@ export function createBlogToolHandlers(ctx: BlogToolContext) {
           }
         }
 
+        // Reject cross-repo threadId: if caller passed an explicit threadId,
+        // it must belong to the same repo (prevents one repo from appending into another's thread)
+        if (params.threadId) {
+          const existing = await ctx.storage.getThread(params.threadId);
+          if (existing && existing.repoKey !== (params.repoKey as RepoKey)) {
+            return toMcpError(`Thread not found in repo: ${params.repoKey}`);
+          }
+        }
+
         const post: Post = {
           id: uuidv4(),
           repoKey: params.repoKey as RepoKey,
@@ -143,15 +150,12 @@ export function createBlogToolHandlers(ctx: BlogToolContext) {
         };
 
         const created = await ctx.storage.createPost(post);
-        // Thread postCount is best-effort — catch so a storage hiccup doesn't
-        // silently fail the whole post creation.
+        // Thread postCount is recomputed by storage.updateThread from actual threadPosts
+        // — no manual increment needed, eliminating the read-modify-write race.
         try {
-          await ctx.storage.updateThread(resolvedThreadId, {
-            postCount: ((await ctx.storage.getThread(resolvedThreadId))?.postCount ?? 0) + 1,
-            latestPostAt: now,
-          });
+          await ctx.storage.updateThread(resolvedThreadId, { latestPostAt: now });
         } catch (updateErr) {
-          logger.error('Thread postCount update failed — post was created', {
+          logger.error('Thread update failed — post was created', {
             postId: created.id,
             threadId: resolvedThreadId,
             error: String(updateErr),
@@ -226,9 +230,13 @@ export function createBlogToolHandlers(ctx: BlogToolContext) {
 
     async get_thread(rawParams: unknown) {
       try {
-        const { threadId } = await z.object({ threadId: z.string().uuid() }).parseAsync(rawParams);
+        const { repoKey, threadId } = await z.object({
+          repoKey: RepoKeySchema,
+          threadId: z.string().uuid(),
+        }).parseAsync(rawParams);
         const thread = await ctx.storage.getThread(threadId);
         if (!thread) return toMcpError(`Thread not found: ${threadId}`);
+        if (thread.repoKey !== repoKey) return toMcpError(`Thread not found in repo: ${repoKey}`);
         const posts = await ctx.storage.getPostsByThread(threadId);
         return toMcpResult({ thread, posts });
       } catch (err) {

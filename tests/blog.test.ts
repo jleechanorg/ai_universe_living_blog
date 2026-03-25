@@ -67,7 +67,7 @@ describe('MemoryBlogStorage', () => {
     expect(thread!.prNumber).toBe(1);
   });
 
-  it('create_post auto-creates thread for novel events', async () => {
+  it('create_post auto-creates thread when no threadId supplied (all event types)', async () => {
     const ctx = makeCtx();
     await ctx.create_post({
       repoKey: TEST_REPO,
@@ -75,10 +75,15 @@ describe('MemoryBlogStorage', () => {
       title: 'Branch entry — feat/bar',
       content: 'Claude wrote a branch novel entry.',
       eventType: 'novel_branch_entry',
-      threadId: '00000000-0000-0000-0000-000000000002',
+      // no threadId — should auto-create thread with generated UUID
     });
-    const thread = await ctx.storage.getThread('00000000-0000-0000-0000-000000000002');
+    // Thread is auto-created — retrieve via list_posts
+    const postsResult = await ctx.list_posts({ repoKey: TEST_REPO });
+    const parsed = JSON.parse(postsResult.content[0].text);
+    const firstPost = parsed.posts[0];
+    const thread = await ctx.storage.getThread(firstPost.threadId);
     expect(thread).not.toBeNull();
+    expect(thread!.repoKey).toBe(TEST_REPO);
   });
 
   it('list_posts returns posts in reverse chronological order', async () => {

@@ -85,8 +85,10 @@ export function createBlogToolHandlers(ctx: BlogToolContext) {
         const now = new Date().toISOString();
         const resolvedThreadId = params.threadId ?? uuidv4();
 
-        // Auto-create thread for pr_created with no threadId
-        if (params.eventType === 'pr_created' && !params.threadId) {
+        // Auto-create thread when no threadId is supplied (covers all event types).
+        // Thread is keyed by the auto-generated UUID so each post gets its own thread
+        // unless the caller explicitly joins an existing thread.
+        if (!params.threadId) {
           const existing = await ctx.storage.getThread(resolvedThreadId);
           if (!existing) {
             const thread: Thread = {
@@ -104,29 +106,9 @@ export function createBlogToolHandlers(ctx: BlogToolContext) {
             await ctx.storage.createThread(thread);
             logger.debug('Thread auto-created', { threadId: resolvedThreadId, repoKey: params.repoKey });
           }
-        }
-
-        // Auto-create thread for novel events
-        if (params.eventType.startsWith('novel_')) {
-          const existing = await ctx.storage.getThread(resolvedThreadId);
-          if (!existing) {
-            const thread: Thread = {
-              id: resolvedThreadId,
-              repoKey: params.repoKey as RepoKey,
-              posterId: poster.id,
-              title: params.title,
-              postCount: 0,
-              latestPostAt: now,
-              status: 'open',
-              createdAt: now,
-            };
-            await ctx.storage.createThread(thread);
-          }
-        }
-
-        // Reject cross-repo threadId: if caller passed an explicit threadId,
-        // it must belong to the same repo (prevents one repo from appending into another's thread)
-        if (params.threadId) {
+        } else {
+          // Reject cross-repo threadId: if caller passed an explicit threadId,
+          // it must belong to the same repo (prevents one repo from appending into another's thread)
           const existing = await ctx.storage.getThread(params.threadId);
           if (existing && existing.repoKey !== (params.repoKey as RepoKey)) {
             return toMcpError(`Thread not found in repo: ${params.repoKey}`);

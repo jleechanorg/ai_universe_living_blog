@@ -32,7 +32,7 @@ import type {
   ListThreadsParams,
   ListThreadsResult,
 } from '../shared/types.js';
-import { PosterSchema, encodeRepoKey } from '../shared/types.js';
+import { PosterSchema, PostSchema, encodeRepoKey } from '../shared/types.js';
 import { logger } from '../shared/logger.js';
 
 export interface FirestoreStorageOptions {
@@ -84,6 +84,7 @@ export class FirestoreBlogStorage implements BlogStorage {
   // ─── Post ─────────────────────────────────────────────────────────────────
 
   async createPost(post: Post): Promise<Post> {
+    PostSchema.parse(post); // fail fast on malformed posts before durable write
     await this.postsCol.doc(post.id).set(post);
     logger.debug('Firestore: Post created', { id: post.id });
     // Refresh thread aggregates so postCount/latestPostAt stay accurate

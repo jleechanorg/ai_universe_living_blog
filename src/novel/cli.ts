@@ -58,9 +58,13 @@ async function loadConfig(configPath?: string): Promise<NovelConfig> {
   return loadNovelConfig('./novel.config.json');
 }
 
-/** Resolve storage type: CLI flag → STORAGE_TYPE env var → 'memory' default. */
+/** Resolve storage type: CLI flag → STORAGE_TYPE env var → 'memory' default. Validates to fail fast on misconfiguration. */
 function resolveStorageType(flagValue?: string): 'memory' | 'firestore' {
-  return (flagValue ?? process.env['STORAGE_TYPE'] ?? 'memory') as 'memory' | 'firestore';
+  const raw = (flagValue ?? process.env['STORAGE_TYPE'] ?? 'memory').trim().toLowerCase();
+  if (raw !== 'memory' && raw !== 'firestore') {
+    throw new Error(`Invalid storage type: "${raw}". Expected "memory" or "firestore".`);
+  }
+  return raw;
 }
 
 async function main() {

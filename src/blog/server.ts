@@ -119,13 +119,13 @@ export async function createBlogApp(): Promise<ReturnType<typeof express>> {
       const { name, arguments: args } = (params as { name?: string; arguments?: unknown }) ?? {};
       if (typeof name !== 'string') {
         return res.json({
-          jsonrpc: '2.0', id,
+          jsonrpc: '2.0', id: id ?? null,
           error: { code: -32602, message: 'Invalid params — tools/call requires { name: string, arguments?: object }' },
         });
       }
       if (args !== undefined && (typeof args !== 'object' || args === null || Array.isArray(args))) {
         return res.json({
-          jsonrpc: '2.0', id,
+          jsonrpc: '2.0', id: id ?? null,
           error: { code: -32602, message: 'Invalid params — tools/call arguments must be an object if provided' },
         });
       }
@@ -136,21 +136,24 @@ export async function createBlogApp(): Promise<ReturnType<typeof express>> {
       toolParams = params;
     }
 
-    const handler = (tools as Record<string, (p?: unknown) => Promise<unknown>>)[toolName];
-    if (!handler) {
+    // Use Object.hasOwn to prevent prototype-pollution attacks (e.g. 'toString', '__proto__')
+    // and verify the handler is actually a function before invoking.
+    const rawHandler = (tools as Record<string, unknown>)[toolName];
+    if (!Object.hasOwn(tools, toolName) || typeof rawHandler !== 'function') {
       return res.json({
-        jsonrpc: '2.0', id,
+        jsonrpc: '2.0', id: id ?? null,
         error: { code: -32601, message: `Method not found: ${toolName}` },
       });
     }
+    const handler = rawHandler as (p?: unknown) => Promise<unknown>;
 
     try {
       const result = await handler(toolParams);
-      return res.json({ jsonrpc: '2.0', id, result });
+      return res.json({ jsonrpc: '2.0', id: id ?? null, result });
     } catch (err) {
       logger.error('Unhandled tool error', { method: toolName, error: String(err) });
       return res.json({
-        jsonrpc: '2.0', id,
+        jsonrpc: '2.0', id: id ?? null,
         error: { code: -32603, message: 'Internal error', data: String(err) },
       });
     }

@@ -2,10 +2,9 @@
 #
 # install-blog.sh — Install the blog MCP server into any repository
 #
-# Clones ai_universe_living_blog to a temp directory, builds the TypeScript,
-# then copies the compiled dist/ output to the target repo's
-# node_modules/ai-universe-living-blog/. This avoids touching the target's
-# src/ or overwriting its package.json.
+# This is a standalone install script. It clones ai_universe_living_blog to a
+# temp directory, copies src/blog and src/shared TypeScript source into the
+# target repo, then runs npm install && npm run build there.
 #
 # Usage:
 #   bash scripts/install-blog.sh --target=/path/to/your/repo
@@ -32,12 +31,22 @@ TARGET="${TARGET:-$(pwd)}"
 INSTALL_ID="ai-universe-living-blog-blog-$$"
 TEMP_DIR="/tmp/${INSTALL_ID}"
 
+# Register cleanup trap early so TEMP_DIR is cleaned up even on early failures.
+trap cleanup EXIT
+
 REPO_URL="https://github.com/jleechanorg/ai_universe_living_blog.git"
 REPO_DIR="${TEMP_DIR}/repo"
 
 log()  { echo "[install-blog] $1"; }
 warn() { echo "[install-blog] WARNING: $1" >&2; }
 die()  { echo "[install-blog] ERROR: $1" >&2; exit 1; }
+
+# ─── Cleanup ───────────────────────────────────────────────────────────────────
+cleanup() {
+  if [[ -z "${DRY_RUN}" && -d "${TEMP_DIR}" ]]; then
+    rm -rf "${TEMP_DIR}"
+  fi
+}
 
 # ─── Dry-run banner ─────────────────────────────────────────────────────────────
 log "ai-universe-living-blog — blog MCP server installer"
@@ -68,62 +77,96 @@ else
   log "Would clone ${REPO_URL} to ${REPO_DIR}"
 fi
 
-# ─── Build in temp dir ────────────────────────────────────────────────────────
+# ─── Verify source directories exist in the cloned repo ────────────────────────
+SRC_BLOG="${REPO_DIR}/src/blog"
+SRC_SHARED="${REPO_DIR}/src/shared"
+
 if [[ -z "${DRY_RUN}" ]]; then
-  log "Installing dependencies and building TypeScript..."
-  (cd "${REPO_DIR}" && npm install --silent 2>/dev/null && npm run build) \
-    || die "npm install/build failed in ${REPO_DIR}"
-else
-  log "Would run: cd ${REPO_DIR} && npm install && npm run build"
+  if [[ ! -d "${SRC_BLOG}" ]]; then
+    die "src/blog not found in cloned repo — check the repository structure"
+  fi
+  if [[ ! -d "${SRC_SHARED}" ]]; then
+    die "src/shared not found in cloned repo — check the repository structure"
+  fi
 fi
 
-# ─── Copy compiled output to target node_modules ────────────────────────────────
-DEST="${TARGET}/node_modules/ai-universe-living-blog"
+# ─── Compute destination paths ─────────────────────────────────────────────────
+DEST_BLOG="${TARGET}/src/blog"
+DEST_SHARED="${TARGET}/src/shared"
+DEST_PKG="${TARGET}/package.json"
+SRC_PKG="${REPO_DIR}/package.json"
 
+# ─── Check target package.json ─────────────────────────────────────────────────
+CREATED_PLACEHOLDER=""
 if [[ -z "${DRY_RUN}" ]]; then
-  log "Copying compiled blog server to ${DEST}..."
-  mkdir -p "${DEST}"
-  # cp -rT merges src/ into dest/ without creating a nested subdirectory.
-  # --no-target-directory is not available on macOS; -T is the POSIX equivalent.
-  cp -rT "${REPO_DIR}/dist/blog" "${DEST}/blog"
-  cp -rT "${REPO_DIR}/dist/shared" "${DEST}/shared"
-  # Also copy novel dist since the blog server may depend on shared types
-  # that resolve via the package's own node_modules.
-  cp -rT "${REPO_DIR}/dist/novel" "${DEST}/novel"
-  cp "${REPO_DIR}/package.json" "${DEST}/package.json"
-  log "  → ${DEST}/blog/server.js"
+  if [[ ! -f "${DEST_PKG}" ]]; then
+    warn "No package.json found in target — creating one"
+    echo '{"name":"installed-blog","private":true}' > "${DEST_PKG}"
+    CREATED_PLACEHOLDER=1
+  fi
+fi
+
+# ─── Copy TypeScript source ─────────────────────────────────────────────────────
+if [[ -z "${DRY_RUN}" ]]; then
+  log "Copying src/blog/ and src/shared/ to target..."
+  mkdir -p "${TARGET}/src"
+
+  # Copy blog (safe copy: replace contents, don't nest)
+  mkdir -p "${DEST_BLOG}"
+  cp -r "${SRC_BLOG}/." "${DEST_BLOG}/"
+  log "  → ${DEST_BLOG}"
+
+  # Copy shared (safe copy)
+  mkdir -p "${DEST_SHARED}"
+  cp -r "${SRC_SHARED}/." "${DEST_SHARED}/"
+  log "  → ${DEST_SHARED}"
+
+  # Merge package.json (preserve target's existing scripts and dependencies)
+  # [1]*[0] so DEST fields win on conflicts (host project takes precedence)
+  if command -v jq &>/dev/null; then
+    tmp=$(mktemp)
+    if jq -s '.[1] * .[0]' "${DEST_PKG}" "${SRC_PKG}" > "${tmp}"; then
+      mv "${tmp}" "${DEST_PKG}"
+      log "  merged → ${DEST_PKG}"
+    else
+      rm -f "${tmp}"
+      warn "Could not merge package.json — keeping target's version"
+    fi
+  else
+    warn "jq not available — keeping target's package.json (scripts may be missing)"
+  fi
+
+  # Create or update scripts/ directory with the blog install script
+  mkdir -p "${TARGET}/scripts"
+  cp "${REPO_DIR}/scripts/install-blog.sh" "${TARGET}/scripts/install-blog.sh"
+  chmod +x "${TARGET}/scripts/install-blog.sh"
+  log "  → ${TARGET}/scripts/install-blog.sh"
 else
   log "Would copy:"
-  log "  ${REPO_DIR}/dist/blog/   → ${DEST}/blog/"
-  log "  ${REPO_DIR}/dist/shared/  → ${DEST}/shared/"
-  log "  ${REPO_DIR}/dist/novel/   → ${DEST}/novel/"
+  log "  ${SRC_BLOG}  → ${DEST_BLOG}"
+  log "  ${SRC_SHARED} → ${DEST_SHARED}"
+  log "  ${SRC_PKG}   → ${DEST_PKG}"
 fi
 
-# ─── Merge package.json scripts into target (non-destructive) ───────────────────
-if [[ -z "${DRY_RUN}" && -f "${TARGET}/package.json" ]]; then
-  log "Merging npm scripts into target package.json..."
-  # Use node to do a clean deep merge of scripts only (avoids bash JSON pitfalls)
-  node - <<'NODE_SCRIPT'
-    const fs = require('fs');
-    const targetPkg = JSON.parse(fs.readFileSync(process.argv[2], 'utf-8'));
-    const sourcePkg = JSON.parse(fs.readFileSync(process.argv[3], 'utf-8'));
-    // Only merge the scripts field, preserve everything else in target
-    if (sourcePkg.scripts) {
-      targetPkg.scripts = { ...(targetPkg.scripts || {}), ...sourcePkg.scripts };
-    }
-    // Add blog-specific peer deps if not present
-    if (!targetPkg.dependencies) targetPkg.dependencies = {};
-    const peerDeps = ['express', 'cors', 'uuid', 'winston', 'zod'];
-    for (const dep of peerDeps) {
-      if (!targetPkg.dependencies[dep] && sourcePkg.dependencies?.[dep]) {
-        targetPkg.dependencies[dep] = sourcePkg.dependencies[dep];
-      }
-    }
-    fs.writeFileSync(process.argv[2], JSON.stringify(targetPkg, null, 2) + '\n');
-    console.log('Merged scripts into', process.argv[2]);
-  -- "${TARGET}/package.json" "${REPO_DIR}/package.json" || {
-    warn "package.json merge failed — skipping (target package.json preserved)"
-  }
+# ─── Install dependencies and build ─────────────────────────────────────────────
+if [[ -z "${DRY_RUN}" ]]; then
+  if command -v npm &>/dev/null; then
+    log "Running npm install..."
+    (cd "${TARGET}" && npm install) || die "npm install failed"
+    if [[ -n "${CREATED_PLACEHOLDER}" ]]; then
+      warn "No package.json existed — skipping build (add build script to ${DEST_PKG})"
+      warn "Run manually: npm install && npm run build"
+    else
+      log "Running npm run build..."
+      (cd "${TARGET}" && npm run build) || die "npm run build failed"
+    fi
+  else
+    warn "npm not found — skipping install and build"
+    warn "Run the following manually in ${TARGET}:"
+    warn "  npm install && npm run build"
+  fi
+else
+  log "Would run in ${TARGET}: npm install && npm run build"
 fi
 
 # ─── Next steps ───────────────────────────────────────────────────────────────
@@ -131,23 +174,15 @@ log ""
 log "Install complete!"
 log ""
 log "Next steps:"
-log "  1. cd ${TARGET} && npm install   # install any new peer dependencies"
+log "  1. cd ${TARGET}"
 log "  2. Add to ~/.claude.json (MCP servers section):"
 log "     {"
 log "       \"blog-mcp\": {"
-log "         \"command\": \"node\","
-log "         \"args\": [\"${DEST}/blog/server.js\"]"
+log "         \"command\": \"tsx\","
+log "         \"args\": [\"${TARGET}/src/blog/server.ts\"]"
 log "       }"
 log "     }"
 log "  3. Restart Claude Code to load the MCP server"
-log "  4. npm run dev:blog  # start the blog MCP server (or: node ${DEST}/blog/server.js)"
+log "  4. npm run dev:blog  # start the blog MCP server"
 log ""
 log "Documentation: https://github.com/jleechanorg/ai_universe_living_blog/blob/main/docs/ARCHITECTURE.md"
-
-# ─── Cleanup ───────────────────────────────────────────────────────────────────
-cleanup() {
-  if [[ -z "${DRY_RUN}" && -d "${TEMP_DIR}" ]]; then
-    rm -rf "${TEMP_DIR}"
-  fi
-}
-trap cleanup EXIT

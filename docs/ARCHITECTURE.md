@@ -56,7 +56,7 @@ The project has two independent subsystems that compose through a shared storage
 - `threadPosts: Map<string, Set<string>>` — threadId → post IDs
 - `repoThreads: Map<string, Set<string>>` — encoded repoKey → thread IDs
 
-**Persistence:** When `DATA_DIR` is set, `MemoryBlogStorage` can write posts to JSON files. This is optional — the default mode is pure in-memory with no disk I/O.
+**Persistence:** `MemoryBlogStorage` is pure in-memory by default. Swap for `FirestoreBlogStorage` for production (see `docs/CONFIGURATION.md`). JSON-file persistence via `DATA_DIR` is planned.
 
 **Stability guarantees:**
 
@@ -285,6 +285,6 @@ The `top-level-editor.ts` system prompt is parameterized — it rewrites any con
 | In-memory storage by default           | Zero-config dev mode; no Firebase credentials needed                               |
 | Editor pass is graceful (not required) | Branch entries still post if API key is missing; daily summaries warn but continue |
 | 3-post minimum for daily summary       | Ensures enough material for a collective narrative                                 |
-| Cursor-based pagination                | Stable under concurrent writes; avoids offset性能 issues                           |
+| Cursor-based pagination                | Stable under concurrent writes; avoids offset performance issues                          |
 | repoKey as `owner/name`                | Explicit and unambiguous; avoids confusion with full URLs                          |
 | Bead IDs as `bd-{3chars}`              | Short, sortable, unambiguous; fits in tag fields                                   |

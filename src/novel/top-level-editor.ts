@@ -74,11 +74,9 @@ export async function topLevelEditorPass(
 
   if (!apiKey) {
     logger.warn('topLevelEditorPass: no ANTHROPIC_API_KEY — returning raw content with editorial notes');
-    const wordCount = rawContent.split(/\s+/).length;
     return {
       editedContent: rawContent,
-      wordCount,
-      povCount: (rawContent.match(/^### POV:/gm) ?? []).length || 1,
+      ...deriveRawMetrics(rawContent),
       beadIds: [],
       editorialNotes: ['⚠️ No API key — raw content returned unedited. Add ANTHROPIC_API_KEY for editor pass.'],
     };
@@ -144,7 +142,6 @@ Return ONLY the rewritten content. No commentary, no explanation.`;
         'Content-Type': 'application/json',
         'x-api-key': apiKey,
         'anthropic-version': '2023-06-01',
-        'anthropic-dangerous-direct-browser-access': 'true',
       },
       signal: AbortSignal.timeout(60_000),
       body: JSON.stringify({
@@ -184,15 +181,24 @@ Return ONLY the rewritten content. No commentary, no explanation.`;
     return { editedContent, wordCount, povCount, beadIds, editorialNotes };
   } catch (err) {
     logger.error('Editor pass failed', { error: String(err) });
-    // Graceful fallback — return raw content
     return {
       editedContent: rawContent,
-      wordCount: rawContent.split(/\s+/).length,
-      povCount: 1,
+      ...deriveRawMetrics(rawContent),
       beadIds: [],
       editorialNotes: [`⚠️ Editor pass failed: ${String(err)} — raw content returned.`],
     };
   }
+}
+
+/**
+ * Derive wordCount and povCount from raw content — single source of truth
+ * used by both the no-API-key path and the error fallback path.
+ */
+function deriveRawMetrics(rawContent: string): { wordCount: number; povCount: number } {
+  const trimmed = rawContent.trim();
+  const wordCount = trimmed ? trimmed.split(/\s+/).length : 0;
+  const povCount = (trimmed.match(/^### POV:/gm) ?? []).length;
+  return { wordCount, povCount: povCount || 0 };
 }
 
 /**

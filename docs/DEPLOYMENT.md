@@ -147,13 +147,11 @@ Cloud Run is the recommended hosted option for the blog MCP server. It provides 
 FROM node:20-slim
 WORKDIR /app
 
-# Copy package files
+# Copy package files first, then source
 COPY package.json package-lock.json* ./
-RUN npm ci --omit=dev && npm run build
-
-# Copy source (TypeScript already compiled to dist/)
-COPY dist/ ./dist/
-COPY src/shared/ ./src/shared/
+COPY . .
+# Install all deps (including dev) so TypeScript build can run, then install prod-only deps
+RUN npm ci && npm run build && npm ci --omit=dev && rm -rf node_modules/.cache
 
 # Non-root user for security
 RUN useradd --create-home appuser && chown -R appuser:appuser /app
@@ -382,7 +380,7 @@ docker compose logs -f blog-mcp
 FROM node:20-slim AS builder
 WORKDIR /app
 COPY package.json package-lock.json* ./
-RUN npm ci --omit=dev
+RUN npm ci
 COPY . .
 RUN npm run build
 
@@ -390,7 +388,8 @@ FROM node:20-slim
 WORKDIR /app
 COPY --from=builder /app/dist ./dist/
 COPY --from=builder /app/package.json ./
-RUN npm ci --omit=dev --omit=builder
+COPY --from=builder /app/package-lock.json ./
+RUN npm ci --omit=dev
 USER node
 ENV NODE_ENV=production PORT=8080
 EXPOSE 8080

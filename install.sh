@@ -22,23 +22,35 @@ NOVEL_ONLY=""
 NO_MCP=""
 DRY_RUN=""
 
-for arg in "$@"; do
-  case $arg in
-    --target=*) TARGET="${arg#*=}"; shift ;;
+while [[ $# -gt 0 ]]; do
+  case $1 in
+    --target=*) TARGET="${1#*=}"; shift ;;
     --blog-only) BLOG_ONLY=1; shift ;;
     --novel-only) NOVEL_ONLY=1; shift ;;
     --no-mcp) NO_MCP=1; shift ;;
     --dry-run) DRY_RUN=1; shift ;;
+    *) echo "[install] ERROR: Unknown option: $1 — exiting" >&2; exit 1 ;;
   esac
 done
 
 TARGET="${TARGET:-$(pwd)}"
 INSTALL_ID="ai-universe-living-blog-$$"
 TEMP_DIR="/tmp/${INSTALL_ID}"
+INSTALLED_BLOG=""
+INSTALLED_NOVEL=""
 
 log() { echo "[install] $1"; }
 warn() { echo "[install] WARNING: $1" >&2; }
 die() { echo "[install] ERROR: $1" >&2; exit 1; }
+
+# ─── Cleanup ────────────────────────────────────────────────────────────────────
+# Registered early so TEMP_DIR is always cleaned up even on early failures.
+cleanup() {
+  if [[ -z "${DRY_RUN}" && -d "${TEMP_DIR}" ]]; then
+    rm -rf "${TEMP_DIR}"
+  fi
+}
+trap cleanup EXIT
 
 # ─── Validate mutually-exclusive flags ─────────────────────────────────────────
 if [[ -n "${BLOG_ONLY}" && -n "${NOVEL_ONLY}" ]]; then
@@ -51,13 +63,15 @@ log "Target: ${TARGET}"
 [[ -n "${DRY_RUN}" ]] && log "DRY RUN — no changes will be made"
 
 # ─── Pre-flight ────────────────────────────────────────────────────────────────
-if [[ ! -d "${TARGET}/.git" ]]; then
+if [[ ! -d "${TARGET}/.git" && ! -f "${TARGET}/.git" ]]; then
   die "Target directory is not a git repository: ${TARGET}"
 fi
 
+CREATED_PLACEHOLDER=""
 if [[ ! -f "${TARGET}/package.json" ]]; then
   warn "No package.json found — creating one"
   [[ -z "${DRY_RUN}" ]] && echo '{"name":"installed-blog","private":true}' > "${TARGET}/package.json"
+  CREATED_PLACEHOLDER=1
 fi
 
 # ─── Bootstrap temp dir ────────────────────────────────────────────────────────
@@ -77,25 +91,28 @@ SRC_ROOT="${TEMP_DIR}/src"
 # ─── Install blog ─────────────────────────────────────────────────────────────
 install_blog() {
   log "Installing blog MCP server..."
+  INSTALLED_BLOG=1
   local dest="${TARGET}/node_modules/ai-universe-living-blog"
   if [[ -z "${DRY_RUN}" ]]; then
     mkdir -p "${dest}"
-    # Build TypeScript first so dist/ exists — single authoritative build step
+    # Build TypeScript so dist/ exists — single authoritative build step.
+    # Copy built JS so the MCP path always refers to a file that exists
+    # regardless of whether install_npm_dep() overwrites with the published package.
     if command -v npm &>/dev/null && [[ -f "${SRC_ROOT}/package.json" ]]; then
       (cd "${SRC_ROOT}" && npm install --silent 2>/dev/null && npm run build) || \
-        die "npm build failed in ${SRC_ROOT} — cannot install"
+        die "npm build failed in ${SRC_ROOT} — cannot install blog"
     fi
-    cp -r "${SRC_ROOT}/dist/blog" "${dest}/"
-    cp -r "${SRC_ROOT}/dist/shared" "${dest}/"
-    cp "${SRC_ROOT}/package.json" "${dest}/package.json"
+    cp -r "${SRC_ROOT}/dist/blog" "${dest}/dist/"
+    cp -r "${SRC_ROOT}/dist/shared" "${dest}/dist/"
   fi
-  log "  → Blog server: ${dest}"
+  log "  → Blog server: ${dest}/dist/blog"
   log "  → MCP path: ${dest}/dist/blog/server.js"
 }
 
 # ─── Install novel ─────────────────────────────────────────────────────────────
 install_novel() {
   log "Installing novel engine..."
+  INSTALLED_NOVEL=1
   local dest="${TARGET}/node_modules/ai-universe-living-blog"
   if [[ -z "${DRY_RUN}" ]]; then
     mkdir -p "${dest}"
@@ -104,9 +121,8 @@ install_novel() {
       (cd "${SRC_ROOT}" && npm install --silent 2>/dev/null && npm run build) || \
         die "npm build failed in ${SRC_ROOT} — cannot install"
     fi
-    cp -r "${SRC_ROOT}/dist/novel" "${dest}/"
-    cp -r "${SRC_ROOT}/dist/shared" "${dest}/"
-    cp "${SRC_ROOT}/package.json" "${dest}/package.json"
+    cp -r "${SRC_ROOT}/dist/novel" "${dest}/dist/"
+    cp -r "${SRC_ROOT}/dist/shared" "${dest}/dist/"
   fi
   log "  → Novel engine: ${dest}/dist/novel/engine.js"
   log "  → CLI: node ${dest}/dist/novel/cli.js"
@@ -134,18 +150,28 @@ install_mcp_config() {
 
   log "Adding MCP server config to ~/.claude.json..."
   local claude_json="${HOME}/.claude.json"
-  # MCP path after build: dist/blog/server.js
+  # MCP path: built JavaScript in the installed npm package
   local mcp_path="${TARGET}/node_modules/ai-universe-living-blog/dist/blog/server.js"
-  local mcp_entry="blog-mcp"
 
   if [[ -z "${DRY_RUN}" ]]; then
-    if [[ -f "${claude_json}" ]]; then
-      if grep -q '"mcpServers"' "${claude_json}"; then
-        warn "~/.claude.json already has mcpServers — append this manually:"
-        warn "  {\"blog-mcp\": {\"command\":\"node\",\"args\":[\"${mcp_path}\"]}}"
+    if [[ -f "${claude_json}" ]] && command -v jq &>/dev/null; then
+      # Safe read-modify-write: merge blog-mcp into existing mcpServers, preserve all other keys
+      local tmp
+      tmp=$(mktemp)
+      if jq --arg path "${mcp_path}" \
+         '.mcpServers += {"blog-mcp": {"command":"node","args":[$path]}}' \
+         "${claude_json}" > "${tmp}"; then
+        mv "${tmp}" "${claude_json}"
+        log "~/.claude.json updated with blog-mcp server (existing config preserved)"
+        log "Restart Claude Code to load the MCP server"
       else
-        warn "~/.claude.json exists without mcpServers key — append manually"
+        warn "Failed to merge into ~/.claude.json — append manually:"
+        warn "  {\"blog-mcp\": {\"command\":\"node\",\"args\":[\"${mcp_path}\"]}}"
+        rm -f "${tmp}"
       fi
+    elif [[ -f "${claude_json}" ]]; then
+      warn "~/.claude.json exists but jq is not available — append manually:"
+      warn "  {\"blog-mcp\": {\"command\":\"node\",\"args\":[\"${mcp_path}\"]}}"
     else
       cat > "${claude_json}" <<EOF
 {
@@ -168,23 +194,34 @@ install_npm_dep() {
   log "Adding ai-universe-living-blog as npm dependency..."
   if [[ -z "${DRY_RUN}" && -f "${TARGET}/package.json" ]]; then
     if command -v npm &>/dev/null; then
-      if ! (cd "${TARGET}" && npm install --save ai-universe-living-blog@latest 2>/dev/null); then
-        warn "npm install failed — package not yet published to npm."
-        warn "Install complete via dist/ copy. Publish to npm when ready."
+      if [[ -n "${CREATED_PLACEHOLDER}" ]]; then
+        warn "No package.json existed — skipping npm install (add dependencies to ${TARGET}/package.json)"
+        warn "Run manually: npm install"
+      elif ! (cd "${TARGET}" && npm install --save ai-universe-living-blog@latest 2>/dev/null); then
+        # Fallback: add as a file: dependency pointing to the copied node_modules path
+        warn "npm install failed — adding as file: dependency..."
+        if command -v jq &>/dev/null; then
+          local tmp
+          tmp=$(mktemp)
+          if jq --arg dep "file:./node_modules/ai-universe-living-blog" \
+             '.dependencies["ai-universe-living-blog"] = $dep' \
+             "${TARGET}/package.json" > "${tmp}"; then
+            mv "${tmp}" "${TARGET}/package.json"
+            log "Added ai-universe-living-blog as file: dependency"
+          else
+            rm -f "${tmp}"
+            warn "Could not update package.json — add manually: \"ai-universe-living-blog\": \"file:./node_modules/ai-universe-living-blog\""
+          fi
+        else
+          warn "jq not available — add manually to ${TARGET}/package.json:"
+          warn "  \"dependencies\": { \"ai-universe-living-blog\": \"file:./node_modules/ai-universe-living-blog\" }"
+        fi
       fi
     else
       warn "npm not found — add 'ai-universe-living-blog' to ${TARGET}/package.json manually"
     fi
   fi
 }
-
-# ─── Cleanup ────────────────────────────────────────────────────────────────────
-cleanup() {
-  if [[ -z "${DRY_RUN}" && -d "${TEMP_DIR}" ]]; then
-    rm -rf "${TEMP_DIR}"
-  fi
-}
-trap cleanup EXIT
 
 # ─── Main ─────────────────────────────────────────────────────────────────────
 if [[ -z "${NOVEL_ONLY}" ]]; then
@@ -198,7 +235,8 @@ fi
 install_scripts
 install_npm_dep
 
-if [[ -z "${NOVEL_ONLY}${BLOG_ONLY}" ]]; then
+# install_mcp_config only when blog is installed (not --novel-only) and --no-mcp not passed
+if [[ -z "${NOVEL_ONLY}" && -z "${NO_MCP}" ]]; then
   install_mcp_config
 fi
 
@@ -208,7 +246,11 @@ log ""
 log "Next steps:"
 log "  1. cd ${TARGET}"
 log "  2. npm install && npm run build   # (if not already done by installer)"
-log "  3. npm run dev:blog              # start blog MCP server"
-log "  4. npm run dev:novel -- help     # novel CLI usage"
+if [[ -n "${INSTALLED_BLOG}" ]]; then
+  log "  • npm run dev:blog              # start blog MCP server"
+fi
+if [[ -n "${INSTALLED_NOVEL}" ]]; then
+  log "  • npm run dev:novel -- help     # novel CLI usage"
+fi
 log ""
 log "Documentation: https://github.com/jleechanorg/ai_universe_living_blog"

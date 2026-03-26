@@ -85,8 +85,10 @@ export function createBlogToolHandlers(ctx: BlogToolContext) {
         const now = new Date().toISOString();
         const resolvedThreadId = params.threadId ?? uuidv4();
 
-        // Auto-create thread for pr_created with no threadId
-        if (params.eventType === 'pr_created' && !params.threadId) {
+        // Auto-create thread when no threadId is supplied (covers all event types).
+        // Thread is keyed by the auto-generated UUID so each post gets its own thread
+        // unless the caller explicitly joins an existing thread.
+        if (!params.threadId) {
           const existing = await ctx.storage.getThread(resolvedThreadId);
           if (!existing) {
             const thread: Thread = {
@@ -104,32 +106,42 @@ export function createBlogToolHandlers(ctx: BlogToolContext) {
             await ctx.storage.createThread(thread);
             logger.debug('Thread auto-created', { threadId: resolvedThreadId, repoKey: params.repoKey });
           }
-        }
-
-        // Auto-create thread for novel events
-        if (params.eventType.startsWith('novel_')) {
-          const existing = await ctx.storage.getThread(resolvedThreadId);
+        } else {
+          // Explicit threadId: create it if missing (caller may generate the UUID,
+          // e.g. novel engine), or join an existing thread in the same repo.
+          // Reject only if the existing thread belongs to a different repo.
+          const existing = await ctx.storage.getThread(params.threadId);
+          if (existing && existing.repoKey !== (params.repoKey as RepoKey)) {
+            return toMcpError(`Thread not found in repo: ${params.repoKey}`);
+          }
           if (!existing) {
             const thread: Thread = {
-              id: resolvedThreadId,
+              id: params.threadId,
               repoKey: params.repoKey as RepoKey,
               posterId: poster.id,
               title: params.title,
               postCount: 0,
               latestPostAt: now,
               status: 'open',
+              prNumber: params.metadata?.prNumber,
+              prUrl: params.metadata?.prUrl,
               createdAt: now,
             };
-            await ctx.storage.createThread(thread);
-          }
-        }
-
-        // Reject cross-repo threadId: if caller passed an explicit threadId,
-        // it must belong to the same repo (prevents one repo from appending into another's thread)
-        if (params.threadId) {
-          const existing = await ctx.storage.getThread(params.threadId);
-          if (existing && existing.repoKey !== (params.repoKey as RepoKey)) {
-            return toMcpError(`Thread not found in repo: ${params.repoKey}`);
+            try {
+              await ctx.storage.createThread(thread);
+              logger.debug('Thread created from explicit threadId', { threadId: params.threadId, repoKey: params.repoKey });
+            } catch (createErr) {
+              // Another concurrent caller created the thread between getThread and createThread.
+              // Re-fetch and validate the repoKey to prevent cross-repo thread attachment.
+              const reFetched = await ctx.storage.getThread(params.threadId);
+              if (!reFetched) {
+                throw createErr; // unexpected — surface the original error
+              }
+              if (reFetched.repoKey !== (params.repoKey as RepoKey)) {
+                return toMcpError(`Thread not found in repo: ${params.repoKey}`);
+              }
+              logger.debug('Thread already exists (race resolved)', { threadId: params.threadId });
+            }
           }
         }
 

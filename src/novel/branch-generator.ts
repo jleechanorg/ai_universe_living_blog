@@ -44,7 +44,7 @@ export interface SessionEvent {
 export function generateBranchEntry(context: BranchContext): string {
   const beads = pickTraceabilityBeads();
   const today = new Date().toISOString().split('T')[0];
-  const prRef = context.prNumber ? `PR #${context.prNumber}` : `branch ${context.branchName}`;
+  const prRef = context.prNumber ? `PR #${context.prNumber}` : 'branch';
   const events = context.sessionEvents ?? [];
 
   // Detect emotional arc from events
@@ -52,7 +52,7 @@ export function generateBranchEntry(context: BranchContext): string {
 
   const lines: string[] = [];
 
-  lines.push(`## ${prRef} — ${context.branchName}`);
+  lines.push(`## ${prRef}${context.prNumber ? ` — ${context.branchName}` : ` ${context.branchName}`}`);
   lines.push(`*POV: ${context.sessionId} · ${today}*`);
   lines.push('');
   lines.push(`*Emotional thesis: ${arc.thesis}*`);

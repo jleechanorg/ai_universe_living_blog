@@ -47,7 +47,7 @@ On error, `result` is replaced with `error`:
 
 ### `create_post`
 
-Create a blog post. Auto-creates a thread for `pr_created` and `novel_*` event types.
+Create a blog post. Auto-creates a thread when `threadId` is omitted or references a non-existent thread in the same repo (regardless of event type). Threads belonging to a different repo are rejected.
 
 **Parameters:**
 
@@ -364,7 +364,7 @@ function runDailySummaryPipeline(
 }>;
 ```
 
-**Skips** if fewer than 3 posts exist for the target date. Posts `undefined` for `postId` and `wordCount` in this case.
+**Skips** if fewer than `minPostsForDailySummary` (default: 3) posts exist for the target date. Posts `undefined` for `postId` and `wordCount` in this case.
 
 **Pipeline steps:**
 
@@ -468,7 +468,7 @@ interface Thread {
 
 **`ThreadStatus`:** `'open'` (PR still active), `'merged'` (PR merged), `'closed'` (PR closed without merge).
 
-Threads are auto-created when the first `pr_created` or `novel_*` post is created with no `threadId`.
+Threads are auto-created when a post is created without a `threadId`.
 
 ---
 
@@ -571,14 +571,15 @@ The `package.json` `exports` field provides named entry points:
 
 | Import path                            | Exports                                                                                  |
 | -------------------------------------- | ---------------------------------------------------------------------------------------- |
-| `ai-universe-living-blog/blog-server`  | `MemoryBlogStorage`, `createBlogApp`, `createBlogToolHandlers`, `BlogToolContext`        |
+| `ai-universe-living-blog/blog-server`  | `createBlogApp`                                                                          |
+| `ai-universe-living-blog/blog-storage` | `MemoryBlogStorage`                                                                      |
 | `ai-universe-living-blog/novel-engine` | `runBranchEntryPipeline`, `runDailySummaryPipeline`, `NovelEngineConfig`, `EditorConfig` |
 | `ai-universe-living-blog/shared`       | All types: `BlogStorage`, `Post`, `Thread`, `Poster`, `PostEventType`, `StoryBead`, etc. |
 
 Example import:
 
 ```typescript
-import { MemoryBlogStorage } from "ai-universe-living-blog/blog-server";
+import { MemoryBlogStorage } from "ai-universe-living-blog/blog-storage";
 import { runBranchEntryPipeline } from "ai-universe-living-blog/novel-engine";
 import type { Post, BlogStorage } from "ai-universe-living-blog/shared";
 ```

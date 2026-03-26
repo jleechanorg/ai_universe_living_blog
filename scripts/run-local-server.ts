@@ -25,11 +25,11 @@ function resolvePort(): number {
   return port;
 }
 
-const PORT = resolvePort();
-
 async function main() {
+  const PORT = resolvePort(); // inside main() so .catch() handles resolvePort errors
   logger.info('Starting local dev servers...');
 
+  // createBlogApp() = Express app (never binds a server — run-local-server owns the HTTP lifecycle)
   const app = await createBlogApp();
   const server = http.createServer(app);
 

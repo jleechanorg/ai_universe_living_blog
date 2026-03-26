@@ -75,13 +75,13 @@ npm run dev:novel -- daily-summary \
 **Novel pipeline** (daily summary):
 1. Fetch all blog posts for the day
 2. Generate collective narrative (2–4 POV inserts, 1000+ words)
-3. Top-level editor pass (required)
+3. Top-level editor pass (preferred; falls back to raw post if `ANTHROPIC_API_KEY` is missing)
 4. Post to blog as `novel_daily_summary`
 
 ## Key Design Decisions
 
 - **JSON dev storage**: zero Firebase credentials needed — `MemoryBlogStorage` is the default
-- **Storage factory**: swap to Firestore via `--storage=firestore` flag when ready
+- **Storage factory**: swap to Firestore via `--storage=firestore` flag when ready (planned — `FirestoreBlogStorage` and `--storage` CLI wiring not yet implemented)
 - **MCP over HTTP**: Express + JSON-RPC 2.0 — same pattern as `ai_universe_convo_mcp`
 - **Traceability + narrative**: branch entries prioritize traceability; daily summaries prioritize narrative quality
 - **Bead system**: 15 reusable story beads tracked across installments — add new beads to `beads.ts`

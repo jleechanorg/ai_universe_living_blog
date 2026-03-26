@@ -11,36 +11,37 @@ Implemented `worker-poster` auto-posting for AO lifecycle events (P1-3 of phase2
 
 ## Layer 1 — Unit Tests
 
-`tests/worker-poster.test.ts` — 9 tests, all passing:
+`tests/worker-poster.test.ts` — 10 tests, all passing:
 
 ```
- ✓ tests/worker-poster.test.ts (9 tests) 3ms
+ ✓ tests/worker-poster.test.ts (10 tests) 4ms
    Test Files  1 passed (1)
-   Tests  9 passed (9)
+   Tests  10 passed (10)
 ```
 
-Full suite: **54/54 tests passing** across 4 test files.
+Full suite: **57/57 tests passing** across 4 test files.
 
 - `calls create_post via JSON-RPC directly on blogUrl/mcp` — verifies method name and correct JSON-RPC body
 - `includes optional branch and message fields` — verifies metadata, custom content
-- `throws on non-200 HTTP status` — verifies HTTP error handling
+- `throws on non-200 HTTP status` — verifies HTTP error handling (includes HTTP status code)
 - `throws when JSON-RPC response contains an error object` — verifies JSON-RPC-level error detection
-- `throws when tool result contains isError` — verifies tool-level error surface from result content
+- `throws when tool result contains isError` — verifies tool-level error surface from JSON result content
 - `throws when isError is true but content is empty` — always throws even with empty content
-- `throws with parse error detail when JSON.parse fails in isError handler` — includes parse error message
-- `throws with raw text when JSON.parse succeeds but no error key` — falls back to raw text
+- `includes raw text in error message when isError response is not JSON` — falls back to verbatim text
+- `throws with raw text when isError JSON has no error key` — uses raw text when JSON has no error key
 - `uses passed-in fetchFn when provided` — verifies fetch injection
+- `uses global fetch when fetchFn is not provided` — verifies default fetch is called when no fetchFn given
 
 ---
 
 ## Layer 2 — Integration Tests
 
 Full test suite results captured in `layer2-integration.txt`.
-**54/54 tests passing** including:
-- `blog.test.ts` — 15 tests (MemoryBlogStorage, server routes)
+**57/57 tests passing** including:
+- `blog.test.ts` — 17 tests (MemoryBlogStorage, server routes, tools/call MCP wrapper)
 - `ao-lifecycle.test.ts` — 11 tests (lifecycle hook)
 - `novel.test.ts` — 19 tests (daily-generator, top-level editor)
-- `worker-poster.test.ts` — 9 tests (new)
+- `worker-poster.test.ts` — 10 tests (new)
 
 ---
 
@@ -86,10 +87,12 @@ Returns the created post, confirming full round-trip.
 
 ## Files Changed
 
-- `src/hooks/worker-poster.ts` — new: `postEvent()` function (sha256: `e9ecfb05a0...`)
-- `src/hooks/index.ts` — new: exports `postEvent` and `WorkerEvent` (sha256: `09be8d920b...`)
-- `tests/worker-poster.test.ts` — new: 9 unit tests (sha256: `7e15ed274a...`)
-- `docs/evidence/feat/worker-poster/` — new: 4-layer evidence bundle
+- `src/hooks/worker-poster.ts` — new: `postEvent()` function
+- `src/hooks/index.ts` — new: exports `postEvent` and `WorkerEvent`
+- `tests/worker-poster.test.ts` — new: 10 unit tests
+- `src/blog/server.ts` — added `tools/call` MCP standard wrapper support (direct dispatch also works)
+- `tests/blog.test.ts` — added 2 HTTP integration tests for `tools/call` format
+- `docs/evidence/feat/worker-poster/` — 4-layer evidence bundle
 
 ## Additional Evidence Files
 
@@ -98,6 +101,18 @@ Returns the created post, confirming full round-trip.
 
 ---
 
-## Note: Direct Method Routing
+## Routing: tools/call + Direct Method
 
-The blog server dispatches methods directly (`method: 'create_post'`). `worker-poster.ts` calls `create_post` directly in the JSON-RPC `method` field — matching the live server routing. JSON-RPC error responses (HTTP 200 with `error` object) and tool-level `isError` flags are both detected and thrown as errors.
+The server (`src/blog/server.ts`) now supports **both** dispatch formats:
+
+1. **MCP standard** (`tools/call` wrapper):
+   ```json
+   { "method": "tools/call", "params": { "name": "create_post", "arguments": { ... } } }
+   ```
+
+2. **Direct dispatch** (original, kept for compatibility):
+   ```json
+   { "method": "create_post", "params": { ... } }
+   ```
+
+Both return the same `{ jsonrpc, id, result: { content, isError? } }` structure.

@@ -5,14 +5,16 @@
   "phase": "phase2-roadmap",
   "priority": "P1-3",
   "layer1_sha256": {
-    "src/hooks/worker-poster.ts": "e9ecfb05a006739d474118684757c572b6644254e9348f100b4e1e490726f451",
-    "tests/worker-poster.test.ts": "7e15ed274abadfc8cbf60eca0ccb1d5210ab900facab5c152576cbfb8f447a9b",
-    "src/hooks/index.ts": "09be8d920b0f9c092980b04360e34f591f6b9e9e80cf8c5202a638465b943967"
+    "src/hooks/worker-poster.ts": "d8fbc09b92701e5c17fb7cd01539122bd8ae03a380edbe00ede0838305e9d66e",
+    "tests/worker-poster.test.ts": "c34785095f58b5a9f0a54109c8c2d9072e0815ddd4080c3357f8c908907d99da",
+    "src/hooks/index.ts": "09be8d920b0f9c092980b04360e34f591f6b9e9e80cf8c5202a638465b943967",
+    "src/blog/server.ts": "a2f988660c41cb6b54d5da9f7077a6e0ab1bdbd323a6abc6e40edc631e435d83",
+    "tests/blog.test.ts": "425bcf679de4a89e239e925d6f2ea44f262826b73df9872108896f0455e6e6a5"
   },
   "test_counts": {
-    "worker_poster_test_ts": 9,
-    "total_suite": 54
+    "worker_poster_test_ts": 10,
+    "total_suite": 57
   },
   "verification_date": "2026-03-26",
-  "verification_summary": "All 54 tests passing across 4 test files. TypeScript typecheck clean. ESLint clean."
+  "verification_summary": "All 57 tests passing across 4 test files. TypeScript typecheck clean. ESLint clean."
 }

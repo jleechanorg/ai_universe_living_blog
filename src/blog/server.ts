@@ -95,19 +95,38 @@ export async function createBlogApp(): Promise<ReturnType<typeof express>> {
       });
     }
 
-    const handler = (tools as Record<string, (p?: unknown) => Promise<unknown>>)[method];
+    // Support both MCP direct dispatch (method: 'create_post', params: {...}) and
+    // MCP standard tools/call wrapper (method: 'tools/call', params: { name, arguments }).
+    let toolName: string;
+    let toolParams: unknown;
+    if (method === 'tools/call') {
+      const { name, arguments: args } = (params as { name?: string; arguments?: unknown }) ?? {};
+      if (typeof name !== 'string') {
+        return res.json({
+          jsonrpc: '2.0', id,
+          error: { code: -32602, message: 'Invalid params — tools/call requires { name: string, arguments: object }' },
+        });
+      }
+      toolName = name;
+      toolParams = args;
+    } else {
+      toolName = method;
+      toolParams = params;
+    }
+
+    const handler = (tools as Record<string, (p?: unknown) => Promise<unknown>>)[toolName];
     if (!handler) {
       return res.json({
         jsonrpc: '2.0', id,
-        error: { code: -32601, message: `Method not found: ${method}` },
+        error: { code: -32601, message: `Method not found: ${toolName}` },
       });
     }
 
     try {
-      const result = await handler(params);
+      const result = await handler(toolParams);
       return res.json({ jsonrpc: '2.0', id, result });
     } catch (err) {
-      logger.error('Unhandled tool error', { method, error: String(err) });
+      logger.error('Unhandled tool error', { method: toolName, error: String(err) });
       return res.json({
         jsonrpc: '2.0', id,
         error: { code: -32603, message: 'Internal error', data: String(err) },

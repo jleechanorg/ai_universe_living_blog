@@ -3,12 +3,12 @@
 > vitest run tests/worker-poster.test.ts
 
 
- RUN  v1.6.1 ~/ai_universe_living_blog
+ RUN  v1.6.1 /private/tmp/pr9-worker-poster
 
- ✓ tests/worker-poster.test.ts  (9 tests) 3ms
+ ✓ tests/worker-poster.test.ts  (10 tests) 4ms
 
  Test Files  1 passed (1)
-      Tests  9 passed (9)
-   Start at  11:46:16
-   Duration  159ms (transform 20ms, setup 0ms, collect 17ms, tests 3ms, environment 0ms, prepare 51ms)
+      Tests  10 passed (10)
+   Start at  12:18:36
+   Duration  180ms (transform 23ms, setup 22ms, collect 22ms, tests 4ms, environment 0ms, prepare 36ms)
 

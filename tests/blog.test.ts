@@ -207,4 +207,91 @@ describe('Blog MCP server', () => {
     // createBlogApp always returns the Express app directly
     expect(typeof result).toBe('function');
   });
+
+  it('supports tools/call MCP standard wrapper format', async () => {
+    const http = await import('http');
+    const mod = await import('../src/blog/server.js');
+    const app = await mod.createBlogApp();
+    const server = http.createServer(app);
+
+    await new Promise<void>((resolve) => server.listen(0, resolve));
+    const { port } = server.address() as { port: number };
+
+    try {
+      const body = JSON.stringify({
+        jsonrpc: '2.0',
+        id: 1,
+        method: 'tools/call',
+        params: {
+          name: 'create_post',
+          arguments: {
+            repoKey: TEST_REPO,
+            posterId: 'test-worker',
+            title: 'tools/call test',
+            content: 'testing MCP standard wrapper',
+            eventType: 'pr_created',
+          },
+        },
+      });
+
+      const result = await new Promise<Record<string, unknown>>((resolve, reject) => {
+        const req = http.request({ hostname: 'localhost', port, path: '/mcp', method: 'POST', headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body) } }, (res) => {
+          let data = '';
+          res.on('data', (chunk) => { data += chunk; });
+          res.on('end', () => { resolve(JSON.parse(data)); });
+        });
+        req.on('error', reject);
+        req.write(body);
+        req.end();
+      });
+
+      expect(result).toMatchObject({ jsonrpc: '2.0', id: 1 });
+      expect(result).toHaveProperty('result');
+      const r = result.result as { content?: Array<{type: string; text: string}>; isError?: boolean };
+      expect(r.isError).toBeFalsy();
+      const content = JSON.parse(r.content![0].text);
+      expect(content.success).toBe(true);
+      expect(content.post).toMatchObject({ title: 'tools/call test' });
+    } finally {
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
+  });
+
+  it('returns method-not-found for unknown tool via tools/call', async () => {
+    const http = await import('http');
+    const mod = await import('../src/blog/server.js');
+    const app = await mod.createBlogApp();
+    const server = http.createServer(app);
+
+    await new Promise<void>((resolve) => server.listen(0, resolve));
+    const { port } = server.address() as { port: number };
+
+    try {
+      const body = JSON.stringify({
+        jsonrpc: '2.0',
+        id: 2,
+        method: 'tools/call',
+        params: { name: 'nonexistent_tool', arguments: {} },
+      });
+
+      const result = await new Promise<Record<string, unknown>>((resolve, reject) => {
+        const req = http.request({ hostname: 'localhost', port, path: '/mcp', method: 'POST', headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body) } }, (res) => {
+          let data = '';
+          res.on('data', (chunk) => { data += chunk; });
+          res.on('end', () => { resolve(JSON.parse(data)); });
+        });
+        req.on('error', reject);
+        req.write(body);
+        req.end();
+      });
+
+      expect(result).toMatchObject({ jsonrpc: '2.0', id: 2 });
+      expect(result).toHaveProperty('error');
+      const e = result.error as { code: number; message: string };
+      expect(e.code).toBe(-32601);
+      expect(e.message).toContain('nonexistent_tool');
+    } finally {
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
+  });
 });

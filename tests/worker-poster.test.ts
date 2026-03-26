@@ -60,7 +60,7 @@ describe('postEvent', () => {
     const mockFetch = makeMockFetch(undefined, { ok: false, status: 500 });
     await expect(
       postEvent({ type: 'pr_created', repo: 'owner/repo', pr: 1, session: 'ao-1' }, 'http://localhost:8081', mockFetch),
-    ).rejects.toThrow('Blog post failed: 500');
+    ).rejects.toThrow('Blog post failed: HTTP 500');
   });
 
   it('throws when JSON-RPC response contains an error object', async () => {
@@ -92,10 +92,10 @@ describe('postEvent', () => {
     });
     await expect(
       postEvent({ type: 'pr_created', repo: 'owner/repo', pr: 1, session: 'ao-1' }, 'http://localhost:8081', mockFetch),
-    ).rejects.toThrow('Blog post failed: server returned an error');
+    ).rejects.toThrow('Blog post failed: server returned an error (empty content)');
   });
 
-  it('throws with parse error detail when JSON.parse fails in isError handler', async () => {
+  it('includes raw text in error message when isError response is not JSON', async () => {
     const mockFetch = makeMockFetch({
       jsonrpc: '2.0',
       id: 1,
@@ -106,10 +106,10 @@ describe('postEvent', () => {
     });
     await expect(
       postEvent({ type: 'pr_created', repo: 'owner/repo', pr: 1, session: 'ao-1' }, 'http://localhost:8081', mockFetch),
-    ).rejects.toThrow('Blog post failed: not valid json (JSON parse error:');
+    ).rejects.toThrow('Blog post failed: not valid json');
   });
 
-  it('throws with raw text when JSON.parse succeeds but no error key', async () => {
+  it('throws with raw text when isError JSON has no error key', async () => {
     const mockFetch = makeMockFetch({
       jsonrpc: '2.0',
       id: 1,
@@ -131,5 +131,33 @@ describe('postEvent', () => {
       mockFetch,
     );
     expect(mockFetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('uses global fetch when fetchFn is not provided', async () => {
+    const originalFetch = globalThis.fetch;
+    const mockGlobalFetch = makeMockFetch();
+    // Replace global fetch temporarily so postEvent() calls the real thing (our mock)
+    Object.defineProperty(globalThis, 'fetch', {
+      value: mockGlobalFetch,
+      writable: true,
+      configurable: true,
+    });
+    try {
+      // Call WITHOUT third argument — exercises the default parameter
+      await postEvent({
+        type: 'pr_closed',
+        repo: 'a/b',
+        pr: 3,
+        session: 'ao-3',
+      }, 'http://localhost:8081');
+      expect(mockGlobalFetch).toHaveBeenCalledTimes(1);
+    } finally {
+      // Restore so we don't pollute other tests
+      Object.defineProperty(globalThis, 'fetch', {
+        value: originalFetch,
+        writable: true,
+        configurable: true,
+      });
+    }
   });
 });

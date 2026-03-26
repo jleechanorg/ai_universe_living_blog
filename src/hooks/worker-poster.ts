@@ -11,7 +11,7 @@ import type { PostEventType, RepoKey } from '../shared/types.js';
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 export interface WorkerEvent {
-  type: PostEventType;   // e.g. 'pr_created', 'pr_merged', 'pr_review_requested'
+  type: PostEventType;   // must be a valid PostEventType, e.g. 'pr_created', 'pr_merged', 'pr_review_requested'
   repo: RepoKey;          // 'owner/repo'
   pr?: number;
   session: string;        // e.g. 'ao-826'
@@ -54,7 +54,7 @@ export async function postEvent(
     });
     clearTimeout(timeout);
 
-    if (!res.ok) throw new Error(`Blog post failed: ${res.status}`);
+    if (!res.ok) throw new Error(`Blog post failed: HTTP ${res.status}`);
 
     const data = await res.json() as {
       jsonrpc: string;
@@ -62,7 +62,7 @@ export async function postEvent(
       error?: { code: number; message: string };
       result?: {
         isError?: boolean;
-        content?: Array<{ text: string }>;
+        content?: Array<{ type: string; text: string }>;
       };
     };
 
@@ -70,20 +70,19 @@ export async function postEvent(
 
     if (data.result?.isError) {
       const item = data.result.content?.[0];
-      if (item) {
-        let message = `Blog post failed: ${item.text}`;
-        try {
-          const inner = JSON.parse(item.text) as { error?: string };
-          if (inner.error) message = `Blog post failed: ${inner.error}`;
-        } catch (parseErr) {
-          // text wasn't JSON — include parse error detail so callers can
-          // distinguish a parse failure from intentionally non-JSON raw text
-          const parseMsg = parseErr instanceof Error ? parseErr.message : String(parseErr);
-          message = `Blog post failed: ${item.text} (JSON parse error: ${parseMsg})`;
-        }
-        throw new Error(message);
+      if (!item) throw new Error('Blog post failed: server returned an error (empty content)');
+
+      // The blog server returns error details as JSON-stringified { error: string }.
+      // Attempt to extract the inner message; fall back to the raw text.
+      let message: string;
+      try {
+        const inner = JSON.parse(item.text) as { error?: string };
+        message = inner.error ?? item.text;
+      } catch {
+        // text wasn't JSON — include it verbatim so callers can inspect it.
+        message = item.text;
       }
-      throw new Error('Blog post failed: server returned an error');
+      throw new Error(`Blog post failed: ${message}`);
     }
   } catch (err) {
     clearTimeout(timeout);

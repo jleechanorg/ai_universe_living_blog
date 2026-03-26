@@ -4,13 +4,13 @@
 
 | Claim | Artifact | Key Field |
 |-------|----------|-----------|
-| 42 unit tests pass | [layer1-tests.txt](layer1-tests.txt) | `"42 passed"` |
+| 45 unit tests pass | [layer1-tests.txt](layer1-tests.txt) | `"45 passed"` |
 | ao-lifecycle tests pass | [layer1-tests.txt](layer1-tests.txt) | `"tests/ao-lifecycle.test.ts (11 tests)"` |
 | Novel CLI creates blog post | [layer3-novel-cli.txt](layer3-novel-cli.txt) | `postId: 9dbb626d-836d-4c4a-ad87-7fa798ce806a` |
 | MCP /health returns healthy | [layer4-visual/01-health-check.json](layer4-visual/01-health-check.json) | `{"status":"healthy"}` |
 | MCP create_post tool succeeds | [layer4-visual/02-create-post.json](layer4-visual/02-create-post.json) | `{"success":true}` |
 | MCP list_posts retrieves post | [layer4-visual/03-list-posts.json](layer4-visual/03-list-posts.json) | post `id` matches create_post |
-| Workflow exists and filters feat/* | [.github/workflows/novel-entry.yml](.github/workflows/novel-entry.yml) | `if: startsWith(github.head_ref, 'feat/')` |
+| Workflow file is syntactically valid; branch filter `feat/` matches this branch | [.github/workflows/novel-entry.yml](.github/workflows/novel-entry.yml) | `if: startsWith(github.head_ref, 'feat/')` — `feat/ao-lifecycle-hooks` matches |
 
 ## Limitations (What This Evidence Does NOT Prove)
 
@@ -19,7 +19,7 @@
 
 ## Layer 1: Unit Tests ✅ PASS
 
-- **Result**: PASS — 43/43 tests passing (11 ao-lifecycle + 19 novel + 13 blog)
+- **Result**: PASS — 45/45 tests passing (11 ao-lifecycle + 19 novel + 15 blog)
 - **Command**: `npm test` (runs `vitest run`)
 - **Evidence**: [layer1-tests.txt](layer1-tests.txt) + SHA-256: [layer1-tests.txt.sha256](layer1-tests.txt.sha256)
 - **Lint**: `npm run lint` — 0 errors

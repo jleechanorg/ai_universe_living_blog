@@ -3,7 +3,7 @@
   "run_id": "jc-907-feat-ao-lifecycle-hooks",
   "iteration": 1,
   "provenance": {
-    "git_head": "0e18999753b155e3cb0b978ccdcc0fd95fb92cec",
+    "git_head": "ade311c8d9f14e7d96eb3245e1ade76b7be3b285",
     "git_branch": "feat/ao-lifecycle-hooks",
     "merge_base": "b187659",
     "commits_ahead_of_main": 7

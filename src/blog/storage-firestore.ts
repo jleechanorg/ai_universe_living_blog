@@ -86,6 +86,19 @@ export class FirestoreBlogStorage implements BlogStorage {
   async createPost(post: Post): Promise<Post> {
     await this.postsCol.doc(post.id).set(post);
     logger.debug('Firestore: Post created', { id: post.id });
+    // Refresh thread aggregates so postCount/latestPostAt stay accurate
+    if (post.threadId) {
+      try {
+        const posts = await this.getPostsByThread(post.threadId);
+        await this.threadsCol.doc(post.threadId).set({
+          postCount: posts.length,
+          latestPostAt: posts[posts.length - 1]?.createdAt ?? post.createdAt,
+        }, { merge: true });
+      } catch {
+        // Non-fatal: thread refresh should not block post creation
+        logger.debug('Firestore: Thread refresh skipped', { threadId: post.threadId });
+      }
+    }
     return post;
   }
 
@@ -172,7 +185,16 @@ export class FirestoreBlogStorage implements BlogStorage {
     if (updates.repoKey !== undefined && updates.repoKey !== existing.repoKey) {
       throw new Error('Updating thread repoKey is not allowed');
     }
-    const updated: Thread = { ...existing, ...updates, id: existing.id, repoKey: existing.repoKey };
+    // Recompute postCount and latestPostAt from actual posts so aggregates are never stale.
+    const posts = await this.getPostsByThread(id);
+    const updated: Thread = {
+      ...existing,
+      ...updates,
+      id: existing.id,
+      repoKey: existing.repoKey,
+      postCount: posts.length,
+      latestPostAt: posts[posts.length - 1]?.createdAt ?? existing.latestPostAt,
+    };
     await this.threadsCol.doc(id).set(updated);
     return updated;
   }

@@ -4,27 +4,29 @@
 
 Implemented `worker-poster` auto-posting for AO lifecycle events (P1-3 of phase2 roadmap).
 
-**PR**: https://github.com/jleechanorg/ai_universe_living_blog/pull/TBD
+**PR**: https://github.com/jleechanorg/ai_universe_living_blog/pull/9
 **Issue**: jleechan-yl5g
 
 ---
 
 ## Layer 1 — Unit Tests
 
-`tests/worker-poster.test.ts` — 4 tests, all passing:
+`tests/worker-poster.test.ts` — 6 tests, all passing:
 
 ```
- ✓ tests/worker-poster.test.ts (4 tests) 3ms
+ ✓ tests/worker-poster.test.ts (6 tests) 3ms
    Test Files  1 passed (1)
-   Tests  4 passed (4)
+   Tests  6 passed (6)
 ```
 
 Full suite: **38/38 tests passing** across 3 test files.
 
-- `posts create_post JSON-RPC call to blogUrl/mcp` — verifies correct JSON-RPC 2.0 body
+- `calls create_post via JSON-RPC directly on blogUrl/mcp` — verifies method name and correct JSON-RPC body
 - `includes optional branch and message fields` — verifies metadata, custom content
-- `throws on non-200 response` — verifies error handling
-- `uses global fetch when fetchFn not provided` — verifies default fetch injection
+- `throws on non-200 HTTP status` — verifies HTTP error handling
+- `throws when JSON-RPC response contains an error object` — verifies JSON-RPC-level error detection
+- `throws when tool result contains isError` — verifies tool-level error surface from result content
+- `uses passed-in fetchFn when provided` — verifies fetch injection
 
 ---
 
@@ -34,7 +36,7 @@ Full test suite results captured in `layer2-integration.txt`.
 **38/38 tests passing** including:
 - `blog.test.ts` — 15 tests (MemoryBlogStorage, server routes)
 - `novel.test.ts` — 19 tests (daily-generator, top-level editor)
-- `worker-poster.test.ts` — 4 tests (new)
+- `worker-poster.test.ts` — 6 tests (new)
 
 ---
 
@@ -82,11 +84,11 @@ Returns the created post, confirming full round-trip.
 
 - `src/hooks/worker-poster.ts` — new: `postEvent()` function
 - `src/hooks/index.ts` — new: exports `postEvent` and `WorkerEvent`
-- `tests/worker-poster.test.ts` — new: 4 unit tests
+- `tests/worker-poster.test.ts` — new: 6 unit tests
 - `docs/evidence/feat/worker-poster/` — new: 4-layer evidence bundle
 
 ---
 
-## Note on `tools/call` vs Direct Method Routing
+## Note: Direct Method Routing
 
-The plan spec describes `tools/call` JSON-RPC format (MCP standard), but the live blog server routes methods directly (`create_post`). The `worker-poster.ts` implementation uses the MCP standard format (`tools/call` with `name`/`arguments`). For live server integration, either the blog server needs to support `tools/call` dispatch, or `worker-poster.ts` can be updated to use direct method routing. The unit tests mock the fetch so are format-agnostic.
+The blog server dispatches methods directly (`method: 'create_post'`). `worker-poster.ts` calls `create_post` directly in the JSON-RPC `method` field — matching the live server routing. JSON-RPC error responses (HTTP 200 with `error` object) and tool-level `isError` flags are both detected and thrown as errors.

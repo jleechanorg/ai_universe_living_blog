@@ -2,21 +2,21 @@
  * Worker Poster — posts AO lifecycle events to the blog MCP server.
  *
  * Calls `create_post` via JSON-RPC 2.0 over HTTP POST /mcp.
- * The fetch dependency is injectable so tests can mock it without
- * network I/O.
+ * The server dispatches methods directly (not via `tools/call` wrapper).
+ * The fetch dependency is injectable so tests can mock it without network I/O.
  */
 
-import type { PostEventType } from '../shared/types.js';
+import type { PostEventType, RepoKey } from '../shared/types.js';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 export interface WorkerEvent {
-  type: string;       // e.g. 'pr_created', 'pr_merged', 'review_requested'
-  repo: string;        // 'owner/repo'
+  type: PostEventType;   // e.g. 'pr_created', 'pr_merged', 'pr_review_requested'
+  repo: RepoKey;          // 'owner/repo'
   pr?: number;
-  session: string;     // e.g. 'ao-826'
+  session: string;        // e.g. 'ao-826'
   branch?: string;
-  message?: string;    // optional narrative override
+  message?: string;       // optional narrative override
 }
 
 // ─── postEvent ────────────────────────────────────────────────────────────────
@@ -29,17 +29,14 @@ export async function postEvent(
   const body = {
     jsonrpc: '2.0',
     id: 1,
-    method: 'tools/call',
+    method: 'create_post',
     params: {
-      name: 'create_post',
-      arguments: {
-        repoKey: event.repo,
-        posterId: event.session,
-        title: `${event.type}: ${event.repo} PR#${event.pr ?? 'N/A'}`,
-        content: event.message ?? `Worker ${event.session} recorded ${event.type}`,
-        eventType: event.type as PostEventType,
-        metadata: { prNumber: event.pr, branchName: event.branch },
-      },
+      repoKey: event.repo,
+      posterId: event.session,
+      title: `${event.type}: ${event.repo} PR#${event.pr ?? 'N/A'}`,
+      content: event.message ?? `Worker ${event.session} recorded ${event.type}`,
+      eventType: event.type,
+      metadata: { prNumber: event.pr, branchName: event.branch },
     },
   };
 
@@ -52,5 +49,20 @@ export async function postEvent(
 
   if (!res.ok) {
     throw new Error(`Blog post failed: ${res.status}`);
+  }
+
+  const data = await res.json() as { jsonrpc: string; id: unknown; error?: { code: number; message: string }; result?: { content: Array<{ text: string; isError?: boolean }> } };
+
+  if (data.error) {
+    throw new Error(`Blog post failed: ${data.error.message}`);
+  }
+
+  if (data.result?.content) {
+    for (const item of data.result.content) {
+      if (item.isError) {
+        const inner = JSON.parse(item.text) as { error?: string };
+        throw new Error(`Blog post failed: ${inner.error ?? item.text}`);
+      }
+    }
   }
 }

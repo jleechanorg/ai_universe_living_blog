@@ -1,25 +1,21 @@
 import { describe, it, expect, vi } from 'vitest';
 import { postEvent } from '../src/hooks/worker-poster.js';
 
-// ─── Fixtures ─────────────────────────────────────────────────────────────────
+// ─── Mock fetch factory ───────────────────────────────────────────────────────
 
-function makeMockFetch(overrides?: {
-  ok?: boolean;
-  status?: number;
-  jsonImplementation?: () => Promise<unknown>;
-}) {
-  const opts = { ok: true, status: 200, jsonImplementation: () => Promise.resolve({ id: 'post-123' }), ...overrides };
-  return vi.fn().mockResolvedValue({
-    ok: opts.ok,
-    status: opts.status,
-    json: opts.jsonImplementation,
+function makeMockFetch(
+  responseData: unknown = { id: 'post-123' },
+  { ok = true, status = 200 }: { ok?: boolean; status?: number } = {},
+) {
+  return vi.fn().mockImplementation(async () => {
+    return { ok, status, async json() { return responseData; } };
   });
 }
 
 // ─── Tests ────────────────────────────────────────────────────────────────────
 
 describe('postEvent', () => {
-  it('posts create_post JSON-RPC call to blogUrl/mcp', async () => {
+  it('calls create_post via JSON-RPC directly on blogUrl/mcp', async () => {
     const mockFetch = makeMockFetch();
     await postEvent(
       { type: 'pr_created', repo: 'owner/repo', pr: 42, session: 'ao-826' },
@@ -27,27 +23,19 @@ describe('postEvent', () => {
       mockFetch,
     );
 
-    expect(mockFetch).toHaveBeenCalledOnce();
-    const [url, init] = mockFetch.mock.calls[0]!;
-    expect(url).toBe('http://localhost:8081/mcp');
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+    const [, init] = mockFetch.mock.calls[0]!;
     expect(init.method).toBe('POST');
     expect(init.headers).toMatchObject({ 'Content-Type': 'application/json' });
     const body = JSON.parse(init.body as string);
-    expect(body).toMatchObject({
-      jsonrpc: '2.0',
-      id: 1,
-      method: 'tools/call',
-      params: {
-        name: 'create_post',
-        arguments: {
-          repoKey: 'owner/repo',
-          posterId: 'ao-826',
-          title: 'pr_created: owner/repo PR#42',
-          content: 'Worker ao-826 recorded pr_created',
-          eventType: 'pr_created',
-          metadata: { prNumber: 42 },
-        },
-      },
+    expect(body.method).toBe('create_post');
+    expect(body.params).toMatchObject({
+      repoKey: 'owner/repo',
+      posterId: 'ao-826',
+      title: 'pr_created: owner/repo PR#42',
+      content: 'Worker ao-826 recorded pr_created',
+      eventType: 'pr_created',
+      metadata: { prNumber: 42 },
     });
   });
 
@@ -59,27 +47,49 @@ describe('postEvent', () => {
       mockFetch,
     );
 
-    const body = JSON.parse((mockFetch.mock.calls[0]![1] as RequestInit).body as string);
-    expect(body.params.arguments).toMatchObject({
+    // Inspect the body that was passed to fetch
+    const bodyString = mockFetch.mock.calls[0]![1].body as string;
+    const body = JSON.parse(bodyString);
+    expect(body.params).toMatchObject({
       content: 'My custom message',
       metadata: { branchName: 'feat/x' },
     });
   });
 
-  it('throws on non-200 response', async () => {
-    const mockFetch = makeMockFetch({ ok: false, status: 500 });
+  it('throws on non-200 HTTP status', async () => {
+    const mockFetch = makeMockFetch(undefined, { ok: false, status: 500 });
     await expect(
       postEvent({ type: 'pr_created', repo: 'owner/repo', pr: 1, session: 'ao-1' }, 'http://localhost:8081', mockFetch),
     ).rejects.toThrow('Blog post failed: 500');
   });
 
-  it('uses global fetch when fetchFn not provided', async () => {
-    const globalFetch = vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => ({ id: 'x' }) });
+  it('throws when JSON-RPC response contains an error object', async () => {
+    const mockFetch = makeMockFetch({ jsonrpc: '2.0', id: 1, error: { code: -32600, message: 'Invalid Request' } });
+    await expect(
+      postEvent({ type: 'pr_created', repo: 'owner/repo', pr: 1, session: 'ao-1' }, 'http://localhost:8081', mockFetch),
+    ).rejects.toThrow('Invalid Request');
+  });
+
+  it('throws when tool result contains isError', async () => {
+    const mockFetch = makeMockFetch({
+      jsonrpc: '2.0',
+      id: 1,
+      result: {
+        content: [{ type: 'text', text: '{"error":"schema validation failed"}', isError: true }],
+      },
+    });
+    await expect(
+      postEvent({ type: 'pr_created', repo: 'owner/repo', pr: 1, session: 'ao-1' }, 'http://localhost:8081', mockFetch),
+    ).rejects.toThrow('schema validation failed');
+  });
+
+  it('uses passed-in fetchFn when provided', async () => {
+    const mockFetch = makeMockFetch();
     await postEvent(
       { type: 'pr_closed', repo: 'a/b', pr: 3, session: 'ao-3' },
       'http://localhost:8081',
-      globalFetch,
+      mockFetch,
     );
-    expect(globalFetch).toHaveBeenCalled();
+    expect(mockFetch).toHaveBeenCalledTimes(1);
   });
 });

@@ -95,7 +95,7 @@ describe('postEvent', () => {
     ).rejects.toThrow('Blog post failed: server returned an error');
   });
 
-  it('throws with raw text when JSON.parse fails in isError handler', async () => {
+  it('throws with parse error detail when JSON.parse fails in isError handler', async () => {
     const mockFetch = makeMockFetch({
       jsonrpc: '2.0',
       id: 1,
@@ -106,7 +106,21 @@ describe('postEvent', () => {
     });
     await expect(
       postEvent({ type: 'pr_created', repo: 'owner/repo', pr: 1, session: 'ao-1' }, 'http://localhost:8081', mockFetch),
-    ).rejects.toThrow('Blog post failed: not valid json');
+    ).rejects.toThrow('Blog post failed: not valid json (JSON parse error:');
+  });
+
+  it('throws with raw text when JSON.parse succeeds but no error key', async () => {
+    const mockFetch = makeMockFetch({
+      jsonrpc: '2.0',
+      id: 1,
+      result: {
+        isError: true,
+        content: [{ type: 'text', text: '{"foo":"bar"}' }],
+      },
+    });
+    await expect(
+      postEvent({ type: 'pr_created', repo: 'owner/repo', pr: 1, session: 'ao-1' }, 'http://localhost:8081', mockFetch),
+    ).rejects.toThrow('Blog post failed: {"foo":"bar"}');
   });
 
   it('uses passed-in fetchFn when provided', async () => {

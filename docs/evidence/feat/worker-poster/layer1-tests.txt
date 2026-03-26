@@ -5,10 +5,10 @@
 
  RUN  v1.6.1 ~/ai_universe_living_blog
 
- ✓ tests/worker-poster.test.ts  (6 tests) 3ms
+ ✓ tests/worker-poster.test.ts  (9 tests) 3ms
 
  Test Files  1 passed (1)
-      Tests  6 passed (6)
-   Start at  11:10:51
-   Duration  199ms (transform 21ms, setup 0ms, collect 15ms, tests 3ms, environment 0ms, prepare 51ms)
+      Tests  9 passed (9)
+   Start at  11:46:16
+   Duration  159ms (transform 20ms, setup 0ms, collect 17ms, tests 3ms, environment 0ms, prepare 51ms)
 

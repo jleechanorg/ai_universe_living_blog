@@ -19,6 +19,8 @@ export interface WorkerEvent {
   message?: string;       // optional narrative override
 }
 
+const DEFAULT_TIMEOUT_MS = 10_000;
+
 // ─── postEvent ────────────────────────────────────────────────────────────────
 
 export async function postEvent(
@@ -41,32 +43,53 @@ export async function postEvent(
   };
 
   const url = `${blogUrl.replace(/\/$/, '')}/mcp`;
-  const res = await fetchFn(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  });
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), DEFAULT_TIMEOUT_MS);
+  try {
+    const res = await fetchFn(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+      signal: controller.signal,
+    });
+    clearTimeout(timeout);
 
-  if (!res.ok) {
-    throw new Error(`Blog post failed: ${res.status}`);
-  }
+    if (!res.ok) throw new Error(`Blog post failed: ${res.status}`);
 
-  const data = await res.json() as { jsonrpc: string; id: unknown; error?: { code: number; message: string }; result?: { isError?: boolean; content: Array<{ text: string; isError?: boolean }> } };
+    const data = await res.json() as {
+      jsonrpc: string;
+      id: unknown;
+      error?: { code: number; message: string };
+      result?: {
+        isError?: boolean;
+        content?: Array<{ text: string }>;
+      };
+    };
 
-  if (data.error) {
-    throw new Error(`Blog post failed: ${data.error.message}`);
-  }
+    if (data.error) throw new Error(`Blog post failed: ${data.error.message}`);
 
-  if (data.result?.isError) {
-    const item = data.result.content?.[0];
-    if (item) {
-      try {
-        const inner = JSON.parse(item.text) as { error?: string };
-        throw new Error(`Blog post failed: ${inner.error ?? item.text}`);
-      } catch {
-        throw new Error(`Blog post failed: ${item.text}`);
+    if (data.result?.isError) {
+      const item = data.result.content?.[0];
+      if (item) {
+        let message = `Blog post failed: ${item.text}`;
+        try {
+          const inner = JSON.parse(item.text) as { error?: string };
+          if (inner.error) message = `Blog post failed: ${inner.error}`;
+        } catch (parseErr) {
+          // text wasn't JSON — include parse error detail so callers can
+          // distinguish a parse failure from intentionally non-JSON raw text
+          const parseMsg = parseErr instanceof Error ? parseErr.message : String(parseErr);
+          message = `Blog post failed: ${item.text} (JSON parse error: ${parseMsg})`;
+        }
+        throw new Error(message);
       }
+      throw new Error('Blog post failed: server returned an error');
     }
-    throw new Error('Blog post failed: server returned an error');
+  } catch (err) {
+    clearTimeout(timeout);
+    if (err instanceof Error && err.name === 'AbortError') {
+      throw new Error(`Blog post failed: request timed out after ${DEFAULT_TIMEOUT_MS}ms`);
+    }
+    throw err;
   }
 }

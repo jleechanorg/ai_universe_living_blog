@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import { v4 as uuidv4 } from 'uuid';
 import type { BlogStorage, Post, RepoKey } from '../src/shared/types.js';
 import { shouldRunDailySummary } from '../src/novel/daily-generator.js';

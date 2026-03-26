@@ -32,9 +32,9 @@ jobs:
           if [ -n "${{ inputs.date }}" ]; then
             DATE_ARG="--date=${{ inputs.date }}"
           fi
-          npm run dev:novel -- daily-summary \
+          npx tsx src/novel/cli.ts daily-summary \
             --repo=jleechanorg/ai_universe_living_blog \
             --session=daily-${{ github.run_id }} \
-            $DATE_ARG
+            "$DATE_ARG"
         env:
           NODE_ENV: production

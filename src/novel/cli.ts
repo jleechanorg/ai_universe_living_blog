@@ -24,6 +24,7 @@
 
 import { createStorage } from '../blog/storage-factory.js';
 import { runBranchEntryPipeline, runDailySummaryPipeline, type NovelEngineConfig } from './engine.js';
+import { shouldRunDailySummary } from './daily-generator.js';
 import type { BranchContext } from './branch-generator.js';
 import { loadNovelConfig, type NovelConfig } from './config.js';
 
@@ -152,7 +153,14 @@ async function main() {
       novelConfig,
     };
 
-    const result = await runDailySummaryPipeline(config, params['date']);
+    const targetDate = params['date'] ?? new Date().toISOString().split('T')[0];
+    const shouldRun = await shouldRunDailySummary(config.storage, targetDate, config.repoKey);
+    if (!shouldRun) {
+      console.log(JSON.stringify({ skipped: true, reason: 'Below minimum post threshold for ' + targetDate }, null, 2));
+      return;
+    }
+
+    const result = await runDailySummaryPipeline(config, targetDate);
     console.log(JSON.stringify(result, null, 2));
     return;
   }

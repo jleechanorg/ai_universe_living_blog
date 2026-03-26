@@ -1,4 +1,5 @@
 # CodeRabbit configuration
+# PR #7: Firestore storage + storage factory
 # Enables APPROVE/REQUEST_CHANGES review states
 reviews:
   review_status: true

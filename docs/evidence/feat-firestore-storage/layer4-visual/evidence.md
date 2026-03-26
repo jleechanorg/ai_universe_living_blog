@@ -33,7 +33,7 @@ PORT=8083 FIRESTORE_PROJECT_ID=my-project node --import tsx src/blog/server.ts -
 curl http://localhost:8083/health
 
 # Or via env var:
-STORAGE_TYPE=firestore FIRESTORE_PROJECT_ID=my-project node --import tsx src/blog/server.ts
+PORT=8083 STORAGE_TYPE=firestore FIRESTORE_PROJECT_ID=my-project node --import tsx src/blog/server.ts
 ```
 
 ## Proof of Real App

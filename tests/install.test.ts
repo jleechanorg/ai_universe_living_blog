@@ -70,9 +70,14 @@ describe('install.sh smoke test', () => {
       // Guard: require the source tree to be pre-built so failures are attributable.
       // Without this, a missing dist/ is silently masked if --source copies nothing.
       const sourceServer = join(repoRoot, 'dist', 'blog', 'server.js');
+      const sourceShared = join(repoRoot, 'dist', 'shared');
       expect(
         existsSync(sourceServer),
         `Smoke test requires a built source tree; missing ${sourceServer}`,
+      ).toBe(true);
+      expect(
+        existsSync(sourceShared),
+        `Smoke test requires a built source tree; missing ${sourceShared}`,
       ).toBe(true);
 
       // Use --source so install.sh copies from the LOCAL built repo instead of cloning from GitHub.

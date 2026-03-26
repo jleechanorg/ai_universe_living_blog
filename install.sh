@@ -121,6 +121,14 @@ install_blog() {
     # Copy npm dependencies so the server can resolve express, cors, etc.
     # at the TARGET level (not inside the package subdirectory).
     cp -r "${SRC_ROOT}/node_modules/"* "${TARGET}/node_modules/" 2>/dev/null || true
+    # Stage a proper local package outside node_modules so npm can reinstall it.
+    # This is used by install_npm_dep when --source is set.
+    local_pkg_dir="${TARGET}/.install-pkgs/ai-universe-living-blog"
+    mkdir -p "${local_pkg_dir}/dist/blog"
+    mkdir -p "${local_pkg_dir}/dist/shared"
+    cp "${SRC_ROOT}/package.json" "${local_pkg_dir}/"
+    cp -r "${SRC_ROOT}/dist/blog/"* "${local_pkg_dir}/dist/blog/"
+    cp -r "${SRC_ROOT}/dist/shared" "${local_pkg_dir}/dist/"
   fi
   log "  → Blog server: ${dest}/dist/blog"
   log "  → MCP path: ${dest}/dist/blog/server.js"
@@ -146,6 +154,13 @@ install_novel() {
     fi
     cp -r "${SRC_ROOT}/dist/novel" "${dest}/dist/"
     cp -r "${SRC_ROOT}/dist/shared" "${dest}/dist/"
+    # Stage a proper local package for novel (mirrors blog staging pattern).
+    local_pkg_dir="${TARGET}/.install-pkgs/ai-universe-living-blog"
+    mkdir -p "${local_pkg_dir}/dist/novel"
+    mkdir -p "${local_pkg_dir}/dist/shared"
+    cp "${SRC_ROOT}/package.json" "${local_pkg_dir}/"
+    cp -r "${SRC_ROOT}/dist/novel" "${local_pkg_dir}/dist/"
+    cp -r "${SRC_ROOT}/dist/shared" "${local_pkg_dir}/dist/"
   fi
   log "  → Novel engine: ${dest}/dist/novel/engine.js"
   log "  → CLI: node ${dest}/dist/novel/cli.js"
@@ -221,26 +236,27 @@ install_npm_dep() {
         warn "No package.json existed — skipping npm install (add dependencies to ${TARGET}/package.json)"
         warn "Run manually: npm install"
       elif [[ -n "${SOURCE_DIR}" ]]; then
-        # Use local source — add as file: dependency so the local build is used.
-        # This bypasses the registry install that would overwrite the local copy.
+        # Use local source — stage a proper package and add as file: dependency.
+        # .install-pkgs/ is outside node_modules so npm can reinstall it cleanly.
+        local_pkg_dir="${TARGET}/.install-pkgs/ai-universe-living-blog"
         if command -v jq &>/dev/null; then
           local tmp
           tmp=$(mktemp)
-          if jq --arg dep "file:./node_modules/ai-universe-living-blog" \
+          if jq --arg dep "file:./.install-pkgs/ai-universe-living-blog" \
              '.dependencies["ai-universe-living-blog"] = $dep' \
              "${TARGET}/package.json" > "${tmp}"; then
             mv "${tmp}" "${TARGET}/package.json"
             log "Added ai-universe-living-blog as file: dependency (local source)"
           else
             rm -f "${tmp}"
-            warn "Could not update package.json — add manually: \"ai-universe-living-blog\": \"file:./node_modules/ai-universe-living-blog\""
+            warn "Could not update package.json — add manually: \"ai-universe-living-blog\": \"file:./.install-pkgs/ai-universe-living-blog\""
           fi
         else
           warn "jq not available — add manually to ${TARGET}/package.json:"
-          warn "  \"dependencies\": { \"ai-universe-living-blog\": \"file:./node_modules/ai-universe-living-blog\" }"
+          warn "  \"dependencies\": { \"ai-universe-living-blog\": \"file:./.install-pkgs/ai-universe-living-blog\" }"
         fi
       elif ! (cd "${TARGET}" && npm install --save ai-universe-living-blog@latest 2>/dev/null); then
-        # Fallback: add as a file: dependency pointing to the copied node_modules path
+        # Fallback: add as a file: dependency pointing to the staged package.
         warn "npm install failed — adding as file: dependency..."
         if command -v jq &>/dev/null; then
           local tmp

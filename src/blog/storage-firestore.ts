@@ -128,7 +128,8 @@ export class FirestoreBlogStorage implements BlogStorage {
         // Thread doesn't exist yet — skip refresh (non-fatal)
       }
       // Write the post last so it always succeeds even if thread refresh is skipped.
-      tx.set(this.postsCol.doc(post.id), post);
+      // Use tx.create() for duplicate-safe semantics (fails if post.id already exists).
+      tx.create(this.postsCol.doc(post.id), post);
     });
     logger.debug('Firestore: Post created', { id: post.id });
     return post;

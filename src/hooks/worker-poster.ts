@@ -2,7 +2,8 @@
  * Worker Poster — posts AO lifecycle events to the blog MCP server.
  *
  * Calls `create_post` via JSON-RPC 2.0 over HTTP POST /mcp.
- * The server dispatches methods directly (not via `tools/call` wrapper).
+ * Uses direct dispatch (method: 'create_post') for simplicity.
+ * The server also accepts the MCP standard tools/call wrapper format.
  * The fetch dependency is injectable so tests can mock it without network I/O.
  */
 
@@ -53,7 +54,7 @@ export async function postEvent(
       signal: controller.signal,
     });
 
-    if (!res.ok) throw new Error(`Blog post failed: ${res.status}`);
+    if (!res.ok) throw new Error(`Blog post failed: HTTP ${res.status}`);
 
     const data = await res.json() as {
       jsonrpc: string;
@@ -61,7 +62,7 @@ export async function postEvent(
       error?: { code: number; message: string };
       result?: {
         isError?: boolean;
-        content?: Array<{ text: string }>;
+        content?: Array<{ type: string; text: string }>;
       };
     };
 
@@ -69,20 +70,19 @@ export async function postEvent(
 
     if (data.result?.isError) {
       const item = data.result.content?.[0];
-      if (item) {
-        let message = `Blog post failed: ${item.text}`;
-        try {
-          const inner = JSON.parse(item.text) as { error?: string };
-          if (inner.error) message = `Blog post failed: ${inner.error}`;
-        } catch (parseErr) {
-          // text wasn't JSON — include parse error detail so callers can
-          // distinguish a parse failure from intentionally non-JSON raw text
-          const parseMsg = parseErr instanceof Error ? parseErr.message : String(parseErr);
-          message = `Blog post failed: ${item.text} (JSON parse error: ${parseMsg})`;
-        }
-        throw new Error(message);
+      if (!item) throw new Error('Blog post failed: server returned an error (empty content)');
+
+      // The blog server returns error details as JSON-stringified { error: string }.
+      // Attempt to extract the inner message; fall back to the raw text.
+      let message: string;
+      try {
+        const inner = JSON.parse(item.text) as { error?: string };
+        message = inner.error ?? item.text;
+      } catch {
+        // text wasn't JSON — include it verbatim so callers can inspect it.
+        message = item.text;
       }
-      throw new Error('Blog post failed: server returned an error');
+      throw new Error(`Blog post failed: ${message}`);
     }
   } catch (err) {
     clearTimeout(timeout);

@@ -6,8 +6,8 @@ Real MCP server started with both `--storage=memory` and `--storage=firestore`, 
 ## Evidence Files
 
 ### Startup Logs
-- `04-server-memory-startup.log` — Server started with `PORT=8085 node --import tsx src/blog/server.ts --storage=memory`; logs `"storage":"memory"` and `MemoryBlogStorage initialized`
-- `05-server-firestore-startup.log` — Server started with `PORT=8085 FIRESTORE_PROJECT_ID=evidence-test node --import tsx src/blog/server.ts --storage=firestore`; logs `"storage":"firestore"` and `FirestoreBlogStorage initialized`
+- `04-server-memory-startup.log` — Server started with `PORT=8083 node --import tsx src/blog/server.ts --storage=memory`; logs `"storage":"memory"` and `MemoryBlogStorage initialized`
+- `05-server-firestore-startup.log` — Server started with `PORT=8083 FIRESTORE_PROJECT_ID=evidence-test node --import tsx src/blog/server.ts --storage=firestore`; logs `"storage":"firestore"` and `FirestoreBlogStorage initialized`
 
 ### HTTP Endpoint Responses
 - `01-health-check.json` — `GET /health` returns `{"status":"ok","service":"blog-mcp-server","version":"0.1.0"}`

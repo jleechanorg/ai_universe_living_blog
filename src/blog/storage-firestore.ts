@@ -69,7 +69,15 @@ export class FirestoreBlogStorage implements BlogStorage {
 
   async createPoster(poster: Poster): Promise<void> {
     PosterSchema.parse(poster);
-    await this.postersCol.doc(poster.id).set(poster);
+    try {
+      await this.postersCol.doc(poster.id).create(poster);
+    } catch (err: unknown) {
+      // Firestore error code 6 = ALREADY_EXISTS — surface a clear error instead of silently clobbering
+      if ((err as { code?: number }).code === 6) {
+        throw new Error(`Poster already exists: ${poster.id}`);
+      }
+      throw err;
+    }
     logger.debug('Firestore: Poster created', { id: poster.id });
   }
 
@@ -88,7 +96,7 @@ export class FirestoreBlogStorage implements BlogStorage {
     // Wrap post write + thread-aggregate refresh in a transaction so concurrent
     // post writes cannot clobber each other's postCount/latestPostAt.
     await this.db.runTransaction(async (tx) => {
-      tx.set(this.postsCol.doc(post.id), post);
+      // Read thread doc first (before any writes) to determine if refresh is needed.
       if (post.threadId) {
         const snap = await tx.get(this.threadsCol.doc(post.threadId));
         if (snap.exists) {
@@ -106,6 +114,8 @@ export class FirestoreBlogStorage implements BlogStorage {
         }
         // Thread doesn't exist yet — skip refresh (non-fatal)
       }
+      // Write the post last so it always succeeds even if thread refresh is skipped.
+      tx.set(this.postsCol.doc(post.id), post);
     });
     logger.debug('Firestore: Post created', { id: post.id });
     return post;
@@ -192,7 +202,15 @@ export class FirestoreBlogStorage implements BlogStorage {
   }
 
   async createThread(thread: Thread): Promise<Thread> {
-    await this.threadsCol.doc(thread.id).set(thread);
+    try {
+      await this.threadsCol.doc(thread.id).create(thread);
+    } catch (err: unknown) {
+      // Firestore error code 6 = ALREADY_EXISTS — surface a clear error instead of silently clobbering
+      if ((err as { code?: number }).code === 6) {
+        throw new Error(`Thread already exists: ${thread.id}`);
+      }
+      throw err;
+    }
     logger.debug('Firestore: Thread created', { id: thread.id });
     return thread;
   }

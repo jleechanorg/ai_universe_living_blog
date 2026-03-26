@@ -104,16 +104,16 @@ install_blog() {
   local dest="${TARGET}/node_modules/ai-universe-living-blog"
   if [[ -z "${DRY_RUN}" ]]; then
     mkdir -p "${dest}"
+    # Fail fast when --source is used but the source isn't pre-built.
+    if [[ -n "${SOURCE_DIR}" ]]; then
+      [[ -d "${SRC_ROOT}/dist/shared" ]] || die "--source requires a built checkout (missing ${SRC_ROOT}/dist/shared); run: cd ${SOURCE_DIR} && npm install && npm run build"
+      [[ -n "${NOVEL_ONLY}" || -d "${SRC_ROOT}/dist/blog" ]] || die "--source requires ${SRC_ROOT}/dist/blog (or run: cd ${SOURCE_DIR} && npm install && npm run build)"
+    fi
     # Build TypeScript so dist/ exists — single authoritative build step.
     # Skip if --source was used (local source already has node_modules + dist/).
     if [[ -z "${SOURCE_DIR}" ]] && command -v npm &>/dev/null && [[ -f "${SRC_ROOT}/package.json" ]]; then
       (cd "${SRC_ROOT}" && npm install --silent 2>/dev/null && npm run build) || \
         die "npm build failed in ${SRC_ROOT} — cannot install blog"
-    fi
-    # Fail fast when --source is used but the source isn't pre-built.
-    if [[ -n "${SOURCE_DIR}" ]]; then
-      [[ -d "${SRC_ROOT}/dist/shared" ]] || die "--source requires a built checkout (missing ${SRC_ROOT}/dist/shared); run: cd ${SOURCE_DIR} && npm install && npm run build"
-      [[ -n "${NOVEL_ONLY}" || -d "${SRC_ROOT}/dist/blog" ]] || die "--source requires ${SRC_ROOT}/dist/blog (or run: cd ${SOURCE_DIR} && npm install && npm run build)"
     fi
     mkdir -p "${dest}/dist/blog"
     cp -r "${SRC_ROOT}/dist/blog/"* "${dest}/dist/blog/"

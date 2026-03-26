@@ -726,3 +726,26 @@ CR reviewed jc-905's push (2fa879c2) and posted new CHANGES_REQUESTED:
 - Sent jc-910 message: stop nudge commits, wait for CR to respond to existing ping
 - No new pings needed yet — 21:43Z ping is still pending
 
+
+---
+
+## 2026-03-26 22:12 cycle (UTC)
+
+### Zero-touch rate: 5/6 = 83% → unchanged
+
+### PR #7 — new commit + jc-910 near auto-compact
+- New head: d486bc6cc2 ("fix: use .create() for posters/threads; remove bulk node_modules copy; fix fallback path")
+- CR DISMISSED at 22:03Z (auto-dismiss on new push)
+- CI in_progress on d486bc6cc2
+- jc-910 at 5% until auto-compact — sleeping/monitoring
+
+### CR stall escalation
+- CR has been dismissing reviews without posting APPROVED/CHANGES_REQUESTED since 21:25Z
+- jc-910 pushed additional fixes in response to CR behavior
+- Total: 5 commits on PR #7 since Firestore transaction fix
+
+### Actions
+- Corrected jc-910: do NOT merge without CR APPROVED
+- Posted @coderabbitai review ping at 22:12Z for commit d486bc6cc2
+- jc-910 will compact soon — eloop will take over monitoring
+

@@ -24,6 +24,7 @@
 
 import { createStorage } from '../blog/storage-factory.js';
 import { runBranchEntryPipeline, runDailySummaryPipeline, type NovelEngineConfig } from './engine.js';
+import { fetchDailyPosts } from './daily-generator.js';
 import type { BranchContext } from './branch-generator.js';
 import { loadNovelConfig, type NovelConfig } from './config.js';
 
@@ -143,16 +144,28 @@ async function main() {
       novelConfig.storyVoice = params['voice'] as NovelConfig['storyVoice'];
     }
 
-    const storageType = (params['storage'] ?? 'memory') as 'memory' | 'firestore';
+    const storageType = (params['storage'] ?? process.env['STORAGE_TYPE'] ?? 'memory') as 'memory' | 'firestore';
+
     const config: NovelEngineConfig = {
       repoKey: repoKey as NovelEngineConfig['repoKey'],
       sessionId,
       branchName: 'daily-summary',
-      storage: createStorage({ type: storageType }),
+      storage: createStorage({
+        type: storageType,
+        projectId: process.env['FIRESTORE_PROJECT_ID'],
+        collection: process.env['FIRESTORE_COLLECTION'],
+      }),
       novelConfig,
     };
 
-    const result = await runDailySummaryPipeline(config, params['date']);
+    const targetDate = params['date'] ?? new Date().toISOString().split('T')[0];
+    const posts = await fetchDailyPosts(config.storage, config.repoKey, targetDate);
+    if (posts.length < nc.minPostsForDailySummary) {
+      console.log(JSON.stringify({ skipped: true, reason: `Below minimum post threshold for ${targetDate} (${posts.length} < ${nc.minPostsForDailySummary})` }, null, 2));
+      return;
+    }
+
+    const result = await runDailySummaryPipeline(config, targetDate, posts);
     console.log(JSON.stringify(result, null, 2));
     return;
   }

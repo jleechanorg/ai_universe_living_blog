@@ -144,12 +144,17 @@ async function main() {
       novelConfig.storyVoice = params['voice'] as NovelConfig['storyVoice'];
     }
 
-    const storageType = (params['storage'] ?? 'memory') as 'memory' | 'firestore';
+    const storageType = (params['storage'] ?? process.env['STORAGE_TYPE'] ?? 'memory') as 'memory' | 'firestore';
+
     const config: NovelEngineConfig = {
       repoKey: repoKey as NovelEngineConfig['repoKey'],
       sessionId,
       branchName: 'daily-summary',
-      storage: createStorage({ type: storageType }),
+      storage: createStorage({
+        type: storageType,
+        projectId: process.env['FIRESTORE_PROJECT_ID'],
+        collection: process.env['FIRESTORE_COLLECTION'],
+      }),
       novelConfig,
     };
 

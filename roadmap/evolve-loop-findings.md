@@ -344,3 +344,29 @@ CR approved then changed_requested on same PR. jc-909 resolving autonomously.
 - ao send jc-909: verify all 6 items addressed, fix any remaining, push, re-ping CR with specific context
 
 ### Beads: none new (CR stall is known pattern, not a new systemic gap)
+
+---
+
+## 2026-03-26 20:02 cycle (CR stall 2h+, harness escalation triggered)
+
+### Zero-touch rate: unchanged
+
+### System state
+- PR #9: CR CHANGES_REQUESTED 18:31 (2h+ ago). jc-909 making new fix (worker-poster.ts error msg).
+- 3+ manual CR pings (18:54, 19:01, 19:52) — harness escalation rule triggered
+- Workers: jc-909 active (uncommitted fixes); jc-905/906/908 idle
+
+### Harness escalation
+Same manual operation (post @coderabbitai review) done 3+ times. Pattern recorded.
+
+### Beads created
+- jleechan-3h1o: CR review stall pattern — auto-fallback after 60min timeout (P2)
+
+### Root cause (5 Whys for CR stall)
+1. Why stuck? CR CHANGES_REQUESTED not updated after fixes
+2. Why? CR pings don't guarantee re-review within reasonable time
+3. Why? CR is asynchronous, no SLA on review turnaround
+4. Why? No fallback gate in the 6-green check for CR non-response
+5. Fix: Add 60-min timeout rule — if CR doesn't respond after push+ping, treat as unblocked for merge
+
+### No new fixes dispatched (jc-909 handling autonomously)

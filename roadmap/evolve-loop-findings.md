@@ -824,3 +824,24 @@ CR reviewed jc-905's push (2fa879c2) and posted new CHANGES_REQUESTED:
 - No new commits pushed ✅ (STOP was received)
 - Continuing to wait for CR — if next cycle also has no APPROVED, escalate
 
+
+---
+
+## 2026-03-26 22:52 cycle (UTC)
+
+### Zero-touch rate: 5/6 = 83% → unchanged
+
+### PR #7 — new real fix + CR TIP loop root cause identified
+- New head: 001ec070d3 ("fix: add ignoreUndefinedProperties to Firestore constructor")
+- CI: in_progress on 001ec070d3
+- jc-910 compacted → 27% ctx, active and thinking
+- CR still in TIP loop (responding to "@coderabbitai all good?" — WRONG trigger)
+
+### Root cause: wrong CR trigger command
+- jc-910 was using "@coderabbitai all good?" → triggers chat mode TIP response
+- Correct trigger: "@coderabbitai review" → triggers formal review
+- Sent jc-910 correction: use "@coderabbitai review" after CI passes
+
+### Actions
+- Sent jc-910: correct trigger command, wait for CI, then merge on APPROVED
+

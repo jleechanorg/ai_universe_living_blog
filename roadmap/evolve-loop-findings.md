@@ -213,3 +213,24 @@ Bead created: jleechan-eup3
 ### Beads: none new
 
 ### Fixes: none (workers progressing autonomously)
+
+---
+
+## 2026-03-26 18:51 cycle (PR #8 close to 6-green)
+
+### Zero-touch rate: 69% → unchanged (monitoring for PR #8 merge)
+
+### Key progress
+- **PR #7**: jc-905 completed — L4 evidence pushed, ESM fix included, 40 tests pass. CI pending.
+- **PR #8**: jc-907 reports CI ✅, mergeable ✅, CR APPROVED ✅, Bugbot ✅. Running evidence-reviewer (criterion 6). Close to 6-green merge!
+- **PR #6**: jc-908 fixing CR comment — shell interpolation `${{ inputs.date }}` in workflow
+- **PR #9**: jc-909 polling CI status
+
+### GraphQL: EXHAUSTED (0 remaining) — REST-only
+
+### New friction: jc-906 auto-compact
+- jc-906 hit 0% context → auto-compacted → went idle
+- Re-prompted via ao send with resume task (install smoke test continuation)
+
+### Fixes dispatched
+- ao send jc-906: resume install smoke test + L4 evidence after auto-compact

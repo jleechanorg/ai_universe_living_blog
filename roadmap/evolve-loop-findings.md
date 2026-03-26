@@ -327,3 +327,20 @@ CR approved then changed_requested on same PR. jc-909 resolving autonomously.
 
 ### Fix dispatched
 - Posted `@coderabbitai review` on PR #9 at 19:01 UTC to re-trigger review
+
+---
+
+## 2026-03-26 19:52 cycle (CR stall on PR #9 — 90+ min no response)
+
+### Zero-touch rate: unchanged
+
+### Friction: CR review stall
+- PR #9: CR CHANGES_REQUESTED at 18:31 (6 actionable items)
+- jc-909 pushed fixes at 18:52 but CR hasn't responded to 2 pings
+- CR commented at 19:09 with a TIP auto-reply — not a formal review
+- Pattern: CR APPROVED → CHANGES_REQUESTED → fixes pushed → CR goes silent
+
+### Fix dispatched
+- ao send jc-909: verify all 6 items addressed, fix any remaining, push, re-ping CR with specific context
+
+### Beads: none new (CR stall is known pattern, not a new systemic gap)

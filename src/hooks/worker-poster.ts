@@ -57,9 +57,16 @@ export async function postEvent(
     throw new Error(`Blog post failed: ${data.error.message}`);
   }
 
-  if (data.result?.isError && data.result.content?.[0]) {
-    const item = data.result.content[0];
-    const inner = JSON.parse(item.text) as { error?: string };
-    throw new Error(`Blog post failed: ${inner.error ?? item.text}`);
+  if (data.result?.isError) {
+    const item = data.result.content?.[0];
+    if (item) {
+      try {
+        const inner = JSON.parse(item.text) as { error?: string };
+        throw new Error(`Blog post failed: ${inner.error ?? item.text}`);
+      } catch {
+        throw new Error(`Blog post failed: ${item.text}`);
+      }
+    }
+    throw new Error('Blog post failed: server returned an error');
   }
 }

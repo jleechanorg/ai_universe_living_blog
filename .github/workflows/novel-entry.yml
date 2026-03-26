@@ -31,11 +31,22 @@ jobs:
 
       - name: Generate and post novel entry
         run: |
-          npm run dev:novel -- branch-entry \
+          ACTION="${{ github.event.action }}"
+          if [ "$ACTION" = "opened" ]; then
+            EVENT_TYPE="pr_opened"
+          elif [ "$ACTION" = "closed" ] && ${{ github.event.pull_request.merged }}; then
+            EVENT_TYPE="pr_merged"
+          elif [ "$ACTION" = "closed" ]; then
+            EVENT_TYPE="pr_closed"
+          else
+            EVENT_TYPE="pr_reopened"
+          fi
+          npm run start:novel -- branch-entry \
             --repo=${{ github.repository }} \
             --session=gh-actions-${{ github.run_id }} \
             --branch=${{ github.head_ref }} \
-            --pr=${{ github.event.pull_request.number }}
+            --pr=${{ github.event.pull_request.number }} \
+            --event="$EVENT_TYPE"
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           BLOG_MCP_URL: ${{ secrets.BLOG_MCP_URL }}

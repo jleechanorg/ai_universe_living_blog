@@ -2,6 +2,7 @@
 
 export const NOVEL_TRIGGER_EVENT_TYPES = [
   'pr_opened',
+  'pr_reopened',
   'pr_merged',
   'pr_closed',
 ] as const;

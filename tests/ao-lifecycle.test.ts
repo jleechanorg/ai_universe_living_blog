@@ -1,7 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { handlePrEvent, type PrEvent, type PrEventType } from '../src/hooks/ao-lifecycle.js';
-
-const TRIGGER_TYPES: PrEventType[] = ['pr_opened', 'pr_merged', 'pr_closed'];
+import { handlePrEvent, type PrEvent } from '../src/hooks/ao-lifecycle.js';
 
 describe('handlePrEvent', () => {
   it('calls runCli with branch-entry command for pr_opened', async () => {
@@ -44,6 +42,20 @@ describe('handlePrEvent', () => {
     await handlePrEvent(event, runCli);
     expect(runCli).toHaveBeenCalledOnce;
     expect(runCli).toHaveBeenCalledWith(expect.stringContaining('--pr=99'));
+  });
+
+  it('calls runCli with branch-entry command for pr_reopened', async () => {
+    const runCli = vi.fn().mockResolvedValue(undefined);
+    const event: PrEvent = {
+      type: 'pr_reopened',
+      repo: 'owner/repo',
+      pr: 3,
+      session: 'ao-1',
+      branch: 'feat/r',
+    };
+    await handlePrEvent(event, runCli);
+    expect(runCli).toHaveBeenCalledOnce;
+    expect(runCli).toHaveBeenCalledWith(expect.stringContaining('--pr=3'));
   });
 
   it('calls runCli with branch-entry command for pr_closed', async () => {

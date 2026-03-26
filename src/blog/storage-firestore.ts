@@ -85,8 +85,15 @@ export class FirestoreBlogStorage implements BlogStorage {
     const existing = await this.getPoster(poster.id);
     if (existing) return existing;
     const created: Poster = { ...poster, createdAt: new Date().toISOString() };
-    await this.createPoster(created);
-    return created;
+    try {
+      await this.createPoster(created);
+      return created;
+    } catch (err: unknown) {
+      // ALREADY_EXISTS means another concurrent call created the poster — return it
+      const raced = await this.getPoster(poster.id);
+      if (raced) return raced;
+      throw err;
+    }
   }
 
   // ─── Post ─────────────────────────────────────────────────────────────────
@@ -103,11 +110,15 @@ export class FirestoreBlogStorage implements BlogStorage {
           const posts = await tx.get(
             this.postsCol.where('threadId', '==', post.threadId).orderBy('createdAt', 'asc'),
           );
+          const latestExistingPostAt = posts.docs.at(-1)?.data().createdAt;
           tx.set(
             this.threadsCol.doc(post.threadId),
             {
-              postCount: posts.size,
-              latestPostAt: posts.docs.at(-1)?.data().createdAt ?? post.createdAt,
+              postCount: posts.size + 1,
+              latestPostAt:
+                latestExistingPostAt && new Date(latestExistingPostAt) > new Date(post.createdAt)
+                  ? latestExistingPostAt
+                  : post.createdAt,
             },
             { merge: true },
           );
@@ -175,7 +186,8 @@ export class FirestoreBlogStorage implements BlogStorage {
       if (cursorDoc.exists) {
         q = query.startAfter(cursorDoc).limit(limit);
       } else {
-        logger.debug('Firestore: Invalid cursor, returning from start', { cursor: params.cursor });
+        logger.warn('Firestore: Invalid cursor', { cursor: params.cursor });
+        return { posts: [], cursor: undefined };
       }
     }
 

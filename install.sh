@@ -121,7 +121,7 @@ install_blog() {
     # Stage a proper local package outside node_modules so npm can reinstall it.
     # The file: dependency in package.json handles transitive deps when npm install runs.
     # This is used by install_npm_dep when --source is set.
-    local_pkg_dir="${TARGET}/.install-pkgs/ai-universe-living-blog"
+    local local_pkg_dir="${TARGET}/.install-pkgs/ai-universe-living-blog"
     mkdir -p "${local_pkg_dir}/dist/blog"
     mkdir -p "${local_pkg_dir}/dist/shared"
     cp "${SRC_ROOT}/package.json" "${local_pkg_dir}/"
@@ -153,7 +153,7 @@ install_novel() {
     cp -r "${SRC_ROOT}/dist/novel" "${dest}/dist/"
     cp -r "${SRC_ROOT}/dist/shared" "${dest}/dist/"
     # Stage a proper local package for novel (mirrors blog staging pattern).
-    local_pkg_dir="${TARGET}/.install-pkgs/ai-universe-living-blog"
+    local local_pkg_dir="${TARGET}/.install-pkgs/ai-universe-living-blog"
     mkdir -p "${local_pkg_dir}/dist/novel"
     mkdir -p "${local_pkg_dir}/dist/shared"
     cp "${SRC_ROOT}/package.json" "${local_pkg_dir}/"
@@ -236,7 +236,7 @@ install_npm_dep() {
       elif [[ -n "${SOURCE_DIR}" ]]; then
         # Use local source — stage a proper package and add as file: dependency.
         # .install-pkgs/ is outside node_modules so npm can reinstall it cleanly.
-        local_pkg_dir="${TARGET}/.install-pkgs/ai-universe-living-blog"
+        local local_pkg_dir="${TARGET}/.install-pkgs/ai-universe-living-blog"
         if command -v jq &>/dev/null; then
           local tmp
           tmp=$(mktemp)

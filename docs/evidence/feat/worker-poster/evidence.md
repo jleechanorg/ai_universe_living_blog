@@ -38,7 +38,7 @@ Full suite: **54/54 tests passing** across 4 test files.
 Full test suite results captured in `layer2-integration.txt`.
 **54/54 tests passing** including:
 - `blog.test.ts` — 15 tests (MemoryBlogStorage, server routes)
-- `ao-lifecycle.test.ts` — 19 tests (lifecycle hook)
+- `ao-lifecycle.test.ts` — 11 tests (lifecycle hook)
 - `novel.test.ts` — 19 tests (daily-generator, top-level editor)
 - `worker-poster.test.ts` — 9 tests (new)
 

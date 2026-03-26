@@ -21,7 +21,7 @@
  *   const storage = createStorage({ type: 'firestore', projectId: 'my-project' });
  */
 
-import { Firestore, CollectionReference, DocumentReference } from '@google-cloud/firestore';
+import { Firestore, CollectionReference } from '@google-cloud/firestore';
 import type {
   BlogStorage,
   Poster,
@@ -32,7 +32,7 @@ import type {
   ListThreadsParams,
   ListThreadsResult,
 } from '../shared/types.js';
-import { PosterSchema, PostSchema, encodeRepoKey } from '../shared/types.js';
+import { PosterSchema, PostSchema } from '../shared/types.js';
 import { logger } from '../shared/logger.js';
 
 export interface FirestoreStorageOptions {

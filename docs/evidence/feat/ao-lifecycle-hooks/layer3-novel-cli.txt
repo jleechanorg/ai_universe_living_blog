@@ -1,0 +1,28 @@
+=== Novel CLI smoke test ===
+Command: npm run dev:novel -- branch-entry --repo=jleechanorg/ai_universe_living_blog --session=jc-907-hook-test --branch=feat/ao-lifecycle-hooks --pr=999
+
+Output:
+[26m[32minfo[39m: MemoryBlogStorage initialized (zero-config dev mode)
+[26m[34mdebug[39m: Branch entry pipeline {"sessionId":"jc-907-hook-test","branchName":"feat/ao-lifecycle-hooks","repoKey":"jleechanorg/ai_universe_living_blog","prNumber":999,"storyVoice":"workers"}
+[26m[34mdebug[39m: Raw branch entry generated {"wordCount":114,"target":500}
+[26m[34mdebug[39m: Poster created {"id":"jc-907-hook-test","name":"jc-907-hook-test"}
+[26m[34mdebug[39m: Thread created {"id":"3b5bf83e-ec7a-4683-81cb-ba08d799f431","repoKey":"jleechanorg/ai_universe_living_blog"}
+[26m[34mdebug[39m: Thread created from explicit threadId {"threadId":"3b5bf83e-ec7a-4683-81cb-ba08d799f431","repoKey":"jleechanorg/ai_universe_living_blog"}
+[26m[34mdebug[39m: Post created {"id":"9dbb626d-836d-4c4a-ad87-7fa798ce806a","repoKey":"jleechanorg/ai_universe_living_blog","eventType":"novel_branch_entry"}
+[26m[32minfo[39m: create_post OK {"postId":"9dbb626d-836d-4c4a-ad87-7fa798ce806a","eventType":"novel_branch_entry","repoKey":"jleechanorg/ai_universe_living_blog"}
+[26m[32minfo[39m: Branch entry posted to blog {"postId":"9dbb626d-836d-4c4a-ad87-7fa798ce806a","wordCount":114}
+
+Result:
+{
+  "postId": "9dbb626d-836d-4c4a-ad87-7fa798ce806a",
+  "wordCount": 114,
+  "beadIds": [
+    "bd-0ov",
+    "bd-c8y",
+    "bd-ky1",
+    "bd-0g4",
+    "bd-qrv"
+  ]
+}
+
+Status: SUCCESS — real blog post created via novel branch-entry pipeline

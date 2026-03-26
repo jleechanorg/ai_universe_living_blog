@@ -1,0 +1,168 @@
+
+> ai-universe-living-blog@0.1.0 test
+> vitest run
+
+
+ RUN  v1.6.1 /Users/jleechan/projects/ai_universe_living_blog
+
+ ✓ tests/ao-lifecycle.test.ts  (8 tests) 4ms
+stdout | tests/blog.test.ts > MemoryBlogStorage > creates and retrieves a poster
+[2026-03-26 10:45:29] [32minfo[39m: MemoryBlogStorage initialized (zero-config dev mode)
+[2026-03-26 10:45:29] [34mdebug[39m: Poster created {"id":"ao-826","name":"ao-826"}
+
+stdout | tests/blog.test.ts > MemoryBlogStorage > getOrCreatePoster returns existing poster
+[2026-03-26 10:45:29] [32minfo[39m: MemoryBlogStorage initialized (zero-config dev mode)
+[2026-03-26 10:45:29] [34mdebug[39m: Poster created {"id":"ao-826","name":"ao-826"}
+
+stdout | tests/blog.test.ts > MemoryBlogStorage > create_post creates a post
+[2026-03-26 10:45:29] [32minfo[39m: MemoryBlogStorage initialized (zero-config dev mode)
+[2026-03-26 10:45:29] [32minfo[39m: MemoryBlogStorage initialized (zero-config dev mode)
+[2026-03-26 10:45:29] [34mdebug[39m: Poster created {"id":"ao-826","name":"ao-826"}
+[2026-03-26 10:45:29] [34mdebug[39m: Thread created {"id":"bfbf77b7-1fbf-44eb-92f4-675e8d50e118","repoKey":"test-owner/test-repo"}
+[2026-03-26 10:45:29] [34mdebug[39m: Thread auto-created {"threadId":"bfbf77b7-1fbf-44eb-92f4-675e8d50e118","repoKey":"test-owner/test-repo"}
+[2026-03-26 10:45:29] [34mdebug[39m: Post created {"id":"4fc695d6-12f5-4a54-a58f-b7231ff25192","repoKey":"test-owner/test-repo","eventType":"pr_created"}
+[2026-03-26 10:45:29] [32minfo[39m: create_post OK {"postId":"4fc695d6-12f5-4a54-a58f-b7231ff25192","eventType":"pr_created","repoKey":"test-owner/test-repo"}
+
+stdout | tests/blog.test.ts > MemoryBlogStorage > create_post auto-creates thread for pr_created
+[2026-03-26 10:45:29] [32minfo[39m: MemoryBlogStorage initialized (zero-config dev mode)
+[2026-03-26 10:45:29] [32minfo[39m: MemoryBlogStorage initialized (zero-config dev mode)
+[2026-03-26 10:45:29] [34mdebug[39m: Poster created {"id":"ao-826","name":"ao-826"}
+[2026-03-26 10:45:29] [34mdebug[39m: Thread created {"id":"b8fa06e6-7b87-4d45-b347-35c5587acfac","repoKey":"test-owner/test-repo"}
+[2026-03-26 10:45:29] [34mdebug[39m: Thread auto-created {"threadId":"b8fa06e6-7b87-4d45-b347-35c5587acfac","repoKey":"test-owner/test-repo"}
+[2026-03-26 10:45:29] [34mdebug[39m: Post created {"id":"c620f6fa-614c-4cb9-95ba-3d9e7f1301be","repoKey":"test-owner/test-repo","eventType":"pr_created"}
+[2026-03-26 10:45:29] [32minfo[39m: create_post OK {"postId":"c620f6fa-614c-4cb9-95ba-3d9e7f1301be","eventType":"pr_created","repoKey":"test-owner/test-repo"}
+
+stdout | tests/blog.test.ts > MemoryBlogStorage > create_post auto-creates thread when no threadId supplied (all event types)
+[2026-03-26 10:45:29] [32minfo[39m: MemoryBlogStorage initialized (zero-config dev mode)
+[2026-03-26 10:45:29] [32minfo[39m: MemoryBlogStorage initialized (zero-config dev mode)
+[2026-03-26 10:45:29] [34mdebug[39m: Poster created {"id":"ao-826","name":"ao-826"}
+[2026-03-26 10:45:29] [34mdebug[39m: Thread created {"id":"0d2ec987-d9ff-4b84-9ec7-63439f2d673b","repoKey":"test-owner/test-repo"}
+[2026-03-26 10:45:29] [34mdebug[39m: Thread auto-created {"threadId":"0d2ec987-d9ff-4b84-9ec7-63439f2d673b","repoKey":"test-owner/test-repo"}
+[2026-03-26 10:45:29] [34mdebug[39m: Post created {"id":"aeab45a5-02b4-4bea-b136-0a7a20febd9f","repoKey":"test-owner/test-repo","eventType":"novel_branch_entry"}
+[2026-03-26 10:45:29] [32minfo[39m: create_post OK {"postId":"aeab45a5-02b4-4bea-b136-0a7a20febd9f","eventType":"novel_branch_entry","repoKey":"test-owner/test-repo"}
+
+stdout | tests/blog.test.ts > MemoryBlogStorage > create_post with explicit threadId creates missing thread
+[2026-03-26 10:45:29] [32minfo[39m: MemoryBlogStorage initialized (zero-config dev mode)
+[2026-03-26 10:45:29] [32minfo[39m: MemoryBlogStorage initialized (zero-config dev mode)
+[2026-03-26 10:45:29] [34mdebug[39m: Poster created {"id":"ao-826","name":"ao-826"}
+[2026-03-26 10:45:29] [34mdebug[39m: Thread created {"id":"550e8400-e29b-41d4-a716-446655440000","repoKey":"test-owner/test-repo"}
+[2026-03-26 10:45:29] [34mdebug[39m: Thread created from explicit threadId {"threadId":"550e8400-e29b-41d4-a716-446655440000","repoKey":"test-owner/test-repo"}
+[2026-03-26 10:45:29] [34mdebug[39m: Post created {"id":"4ca60518-9ec5-4b5d-bc6a-15cae1b044da","repoKey":"test-owner/test-repo","eventType":"novel_branch_entry"}
+[2026-03-26 10:45:29] [32minfo[39m: create_post OK {"postId":"4ca60518-9ec5-4b5d-bc6a-15cae1b044da","eventType":"novel_branch_entry","repoKey":"test-owner/test-repo"}
+
+stdout | tests/blog.test.ts > MemoryBlogStorage > list_posts returns posts in reverse chronological order
+[2026-03-26 10:45:29] [32minfo[39m: MemoryBlogStorage initialized (zero-config dev mode)
+[2026-03-26 10:45:29] [32minfo[39m: MemoryBlogStorage initialized (zero-config dev mode)
+[2026-03-26 10:45:29] [34mdebug[39m: Poster created {"id":"ao-826","name":"ao-826"}
+[2026-03-26 10:45:29] [34mdebug[39m: Thread created {"id":"182a5cbe-2ebc-4905-92be-246b03ab02a9","repoKey":"test-owner/test-repo"}
+[2026-03-26 10:45:29] [34mdebug[39m: Thread auto-created {"threadId":"182a5cbe-2ebc-4905-92be-246b03ab02a9","repoKey":"test-owner/test-repo"}
+[2026-03-26 10:45:29] [34mdebug[39m: Post created {"id":"18486226-920a-4dea-8f26-4560643308de","repoKey":"test-owner/test-repo","eventType":"pr_created"}
+[2026-03-26 10:45:29] [32minfo[39m: create_post OK {"postId":"18486226-920a-4dea-8f26-4560643308de","eventType":"pr_created","repoKey":"test-owner/test-repo"}
+[2026-03-26 10:45:29] [34mdebug[39m: Thread created {"id":"a7f4c8ea-d1fb-4883-a629-930e39aca91f","repoKey":"test-owner/test-repo"}
+[2026-03-26 10:45:29] [34mdebug[39m: Thread auto-created {"threadId":"a7f4c8ea-d1fb-4883-a629-930e39aca91f","repoKey":"test-owner/test-repo"}
+[2026-03-26 10:45:29] [34mdebug[39m: Post created {"id":"531023a3-8f9c-448f-be56-2f82ed3986b8","repoKey":"test-owner/test-repo","eventType":"pr_merged"}
+[2026-03-26 10:45:29] [32minfo[39m: create_post OK {"postId":"531023a3-8f9c-448f-be56-2f82ed3986b8","eventType":"pr_merged","repoKey":"test-owner/test-repo"}
+
+stdout | tests/blog.test.ts > MemoryBlogStorage > list_posts supports cursor pagination
+[2026-03-26 10:45:29] [32minfo[39m: MemoryBlogStorage initialized (zero-config dev mode)
+[2026-03-26 10:45:29] [32minfo[39m: MemoryBlogStorage initialized (zero-config dev mode)
+[2026-03-26 10:45:29] [34mdebug[39m: Poster created {"id":"ao-826","name":"ao-826"}
+[2026-03-26 10:45:29] [34mdebug[39m: Thread created {"id":"2dda2661-b998-4dbb-aafd-490885d19c07","repoKey":"test-owner/test-repo"}
+[2026-03-26 10:45:29] [34mdebug[39m: Thread auto-created {"threadId":"2dda2661-b998-4dbb-aafd-490885d19c07","repoKey":"test-owner/test-repo"}
+[2026-03-26 10:45:29] [34mdebug[39m: Post created {"id":"f429de3c-cff7-4419-af46-9d477e60a5d1","repoKey":"test-owner/test-repo","eventType":"pr_created"}
+[2026-03-26 10:45:29] [32minfo[39m: create_post OK {"postId":"f429de3c-cff7-4419-af46-9d477e60a5d1","eventType":"pr_created","repoKey":"test-owner/test-repo"}
+[2026-03-26 10:45:29] [34mdebug[39m: Thread created {"id":"cf5fda99-0b72-41c9-a97f-221f230adc0b","repoKey":"test-owner/test-repo"}
+[2026-03-26 10:45:29] [34mdebug[39m: Thread auto-created {"threadId":"cf5fda99-0b72-41c9-a97f-221f230adc0b","repoKey":"test-owner/test-repo"}
+[2026-03-26 10:45:29] [34mdebug[39m: Post created {"id":"036ddb5c-8966-44ad-9db5-2a94f205a961","repoKey":"test-owner/test-repo","eventType":"pr_created"}
+[2026-03-26 10:45:29] [32minfo[39m: create_post OK {"postId":"036ddb5c-8966-44ad-9db5-2a94f205a961","eventType":"pr_created","repoKey":"test-owner/test-repo"}
+[2026-03-26 10:45:29] [34mdebug[39m: Thread created {"id":"7e12f580-e14a-41a5-9b86-6043dc55304c","repoKey":"test-owner/test-repo"}
+[2026-03-26 10:45:29] [34mdebug[39m: Thread auto-created {"threadId":"7e12f580-e14a-41a5-9b86-6043dc55304c","repoKey":"test-owner/test-repo"}
+[2026-03-26 10:45:29] [34mdebug[39m: Post created {"id":"37639602-36ff-4b6d-b2bc-b0644be6f58c","repoKey":"test-owner/test-repo","eventType":"pr_created"}
+[2026-03-26 10:45:29] [32minfo[39m: create_post OK {"postId":"37639602-36ff-4b6d-b2bc-b0644be6f58c","eventType":"pr_created","repoKey":"test-owner/test-repo"}
+[2026-03-26 10:45:29] [34mdebug[39m: Thread created {"id":"ac4f3535-dc1e-48de-874c-eb1367182b41","repoKey":"test-owner/test-repo"}
+[2026-03-26 10:45:29] [34mdebug[39m: Thread auto-created {"threadId":"ac4f3535-dc1e-48de-874c-eb1367182b41","repoKey":"test-owner/test-repo"}
+[2026-03-26 10:45:29] [34mdebug[39m: Post created {"id":"c3306cb9-c187-4137-8185-7e0e701d1ff7","repoKey":"test-owner/test-repo","eventType":"pr_created"}
+[2026-03-26 10:45:29] [32minfo[39m: create_post OK {"postId":"c3306cb9-c187-4137-8185-7e0e701d1ff7","eventType":"pr_created","repoKey":"test-owner/test-repo"}
+[2026-03-26 10:45:29] [34mdebug[39m: Thread created {"id":"810e0c7c-bfef-4a16-8c3e-61b5ebd782ec","repoKey":"test-owner/test-repo"}
+[2026-03-26 10:45:29] [34mdebug[39m: Thread auto-created {"threadId":"810e0c7c-bfef-4a16-8c3e-61b5ebd782ec","repoKey":"test-owner/test-repo"}
+[2026-03-26 10:45:29] [34mdebug[39m: Post created {"id":"cc468269-211c-4822-b404-9d137bc41aab","repoKey":"test-owner/test-repo","eventType":"pr_created"}
+[2026-03-26 10:45:29] [32minfo[39m: create_post OK {"postId":"cc468269-211c-4822-b404-9d137bc41aab","eventType":"pr_created","repoKey":"test-owner/test-repo"}
+
+stdout | tests/blog.test.ts > MemoryBlogStorage > get_post returns 404 for non-existent post
+[2026-03-26 10:45:29] [32minfo[39m: MemoryBlogStorage initialized (zero-config dev mode)
+[2026-03-26 10:45:29] [32minfo[39m: MemoryBlogStorage initialized (zero-config dev mode)
+
+stdout | tests/blog.test.ts > MemoryBlogStorage > update_post changes content and updates updatedAt
+[2026-03-26 10:45:29] [32minfo[39m: MemoryBlogStorage initialized (zero-config dev mode)
+[2026-03-26 10:45:29] [32minfo[39m: MemoryBlogStorage initialized (zero-config dev mode)
+[2026-03-26 10:45:29] [34mdebug[39m: Poster created {"id":"ao-826","name":"ao-826"}
+[2026-03-26 10:45:29] [34mdebug[39m: Thread created {"id":"f334250b-3579-41a8-805b-8c117de468cf","repoKey":"test-owner/test-repo"}
+[2026-03-26 10:45:29] [34mdebug[39m: Thread auto-created {"threadId":"f334250b-3579-41a8-805b-8c117de468cf","repoKey":"test-owner/test-repo"}
+[2026-03-26 10:45:29] [34mdebug[39m: Post created {"id":"0905af39-8a76-47a8-be21-24960fbed1e5","repoKey":"test-owner/test-repo","eventType":"pr_created"}
+[2026-03-26 10:45:29] [32minfo[39m: create_post OK {"postId":"0905af39-8a76-47a8-be21-24960fbed1e5","eventType":"pr_created","repoKey":"test-owner/test-repo"}
+
+stdout | tests/novel.test.ts > daily-generator.ts > fetchDailyPosts returns posts only within date range
+[2026-03-26 10:45:29] [32minfo[39m: MemoryBlogStorage initialized (zero-config dev mode)
+[2026-03-26 10:45:29] [34mdebug[39m: Post created {"id":"a1905b2e-c4d5-4f25-9771-e2ce1a0d2dce","repoKey":"test-owner/test-repo","eventType":"pr_created"}
+[2026-03-26 10:45:29] [34mdebug[39m: Post created {"id":"76fbc7c9-b2d6-4e90-9528-e96c3efb665f","repoKey":"test-owner/test-repo","eventType":"pr_created"}
+[2026-03-26 10:45:29] [34mdebug[39m: Post created {"id":"55b4ad9b-202b-49d8-b9be-12d7027fee24","repoKey":"test-owner/test-repo","eventType":"pr_created"}
+
+stdout | tests/novel.test.ts > top-level-editor > topLevelEditorPass returns raw content when no API key (graceful degradation)
+[2026-03-26 10:45:29] [33mwarn[39m: topLevelEditorPass: no ANTHROPIC_API_KEY — returning raw content with editorial notes
+
+ ✓ tests/novel.test.ts  (19 tests) 15ms
+stdout | tests/blog.test.ts > MemoryBlogStorage > update_post changes content and updates updatedAt
+[2026-03-26 10:45:29] [34mdebug[39m: Post updated {"id":"0905af39-8a76-47a8-be21-24960fbed1e5"}
+
+stdout | tests/blog.test.ts > MemoryBlogStorage > health_check returns healthy status
+[2026-03-26 10:45:29] [32minfo[39m: MemoryBlogStorage initialized (zero-config dev mode)
+[2026-03-26 10:45:29] [32minfo[39m: MemoryBlogStorage initialized (zero-config dev mode)
+
+stdout | tests/blog.test.ts > MemoryBlogStorage > rejects invalid repoKey format
+[2026-03-26 10:45:29] [32minfo[39m: MemoryBlogStorage initialized (zero-config dev mode)
+[2026-03-26 10:45:29] [32minfo[39m: MemoryBlogStorage initialized (zero-config dev mode)
+[2026-03-26 10:45:29] [31merror[39m: create_post failed {"error":"repoKey: \"owner/name\" format required"}
+
+stdout | tests/blog.test.ts > MemoryBlogStorage > filters list_posts by eventType
+[2026-03-26 10:45:29] [32minfo[39m: MemoryBlogStorage initialized (zero-config dev mode)
+[2026-03-26 10:45:29] [32minfo[39m: MemoryBlogStorage initialized (zero-config dev mode)
+[2026-03-26 10:45:29] [34mdebug[39m: Poster created {"id":"ao-826","name":"ao-826"}
+[2026-03-26 10:45:29] [34mdebug[39m: Thread created {"id":"b85b8815-d11c-460f-9e87-ff746bf2b035","repoKey":"test-owner/test-repo"}
+[2026-03-26 10:45:29] [34mdebug[39m: Thread auto-created {"threadId":"b85b8815-d11c-460f-9e87-ff746bf2b035","repoKey":"test-owner/test-repo"}
+[2026-03-26 10:45:29] [34mdebug[39m: Post created {"id":"ddf0fdc7-815b-4c24-a13c-5ac8b951c6b1","repoKey":"test-owner/test-repo","eventType":"pr_created"}
+[2026-03-26 10:45:29] [32minfo[39m: create_post OK {"postId":"ddf0fdc7-815b-4c24-a13c-5ac8b951c6b1","eventType":"pr_created","repoKey":"test-owner/test-repo"}
+[2026-03-26 10:45:29] [34mdebug[39m: Thread created {"id":"918099e1-ea1f-4bd9-99c2-fde865c18f5e","repoKey":"test-owner/test-repo"}
+[2026-03-26 10:45:29] [34mdebug[39m: Thread auto-created {"threadId":"918099e1-ea1f-4bd9-99c2-fde865c18f5e","repoKey":"test-owner/test-repo"}
+[2026-03-26 10:45:29] [34mdebug[39m: Post created {"id":"52aac287-50e1-4cd0-b9fd-1d9aa95bd106","repoKey":"test-owner/test-repo","eventType":"pr_merged"}
+[2026-03-26 10:45:29] [32minfo[39m: create_post OK {"postId":"52aac287-50e1-4cd0-b9fd-1d9aa95bd106","eventType":"pr_merged","repoKey":"test-owner/test-repo"}
+
+stdout | tests/blog.test.ts > MemoryBlogStorage > get_thread returns thread + all posts
+[2026-03-26 10:45:29] [32minfo[39m: MemoryBlogStorage initialized (zero-config dev mode)
+[2026-03-26 10:45:29] [32minfo[39m: MemoryBlogStorage initialized (zero-config dev mode)
+[2026-03-26 10:45:29] [34mdebug[39m: Thread created {"id":"00000000-0000-0000-0000-000000000099","repoKey":"test-owner/test-repo"}
+[2026-03-26 10:45:29] [34mdebug[39m: Poster created {"id":"ao-826","name":"ao-826"}
+[2026-03-26 10:45:29] [34mdebug[39m: Post created {"id":"f435f9e5-49bb-45ce-bc29-de54787c5b76","repoKey":"test-owner/test-repo","eventType":"pr_created"}
+[2026-03-26 10:45:29] [32minfo[39m: create_post OK {"postId":"f435f9e5-49bb-45ce-bc29-de54787c5b76","eventType":"pr_created","repoKey":"test-owner/test-repo"}
+[2026-03-26 10:45:29] [34mdebug[39m: Post created {"id":"92bfc295-5a72-4f1f-85e1-8603aada63e4","repoKey":"test-owner/test-repo","eventType":"pr_merged"}
+[2026-03-26 10:45:29] [32minfo[39m: create_post OK {"postId":"92bfc295-5a72-4f1f-85e1-8603aada63e4","eventType":"pr_merged","repoKey":"test-owner/test-repo"}
+
+stdout | tests/blog.test.ts > Blog MCP server > createBlogApp returns a usable HTTP handler
+[2026-03-26 10:45:29] [32minfo[39m: MemoryBlogStorage initialized (zero-config dev mode)
+
+ ✓ tests/blog.test.ts  (15 tests) 107ms
+
+ Test Files  3 passed (3)
+      Tests  42 passed (42)
+   Start at  10:45:29
+   Duration  375ms (transform 127ms, setup 0ms, collect 261ms, tests 126ms, environment 0ms, prepare 168ms)
+
+---LINT---
+
+> ai-universe-living-blog@0.1.0 lint
+> eslint src
+
+---TYPES---
+
+> ai-universe-living-blog@0.1.0 typecheck
+> tsc --noEmit
+

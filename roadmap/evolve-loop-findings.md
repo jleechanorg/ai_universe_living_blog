@@ -548,3 +548,22 @@ CR reviewed jc-905's push (2fa879c2) and posted new CHANGES_REQUESTED:
 - jc-910 (51% ctx): complete (PR #12 fixes done)
 - jc-911 (9% ctx): near auto-compact
 - GraphQL: 4231 remaining
+
+---
+
+## 2026-03-26 21:42 cycle
+
+### Zero-touch rate: 4/6 = 67% → unchanged
+
+### PR #7 progress: jc-905 iterating with CR
+- Push 2fa879c2 → CR CHANGES_REQUESTED (20:21) → jc-905 fixed → push 74fcea17589b
+- New CR CHANGES_REQUESTED at 20:39: src/blog/storage-firestore.ts enforce threadId immutability
+- jc-905 (70% ctx) notified; making progress but may auto-compact before done
+
+### PR #12 still waiting for CR re-review
+- jc-910 pushed 6ff5696, posted @coderabbitai at 20:32 — no CR response yet (>1hr)
+- mergeable_state: clean, CI neutral
+
+### Actions
+- Sent jc-905 CR fix details (storage-firestore.ts threadId immutability)
+- No new merges this cycle

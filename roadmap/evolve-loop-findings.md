@@ -441,3 +441,44 @@ Creates noise. Worker should check if PR was already merged before addressing re
 ### Pending
 - PR #14 closed (third duplicate) — total 3 duplicate PRs from jc-909 post-merge, all closed
 - Bead jleechan-3h1o (CR stall 60min fallback) still open P2
+
+---
+
+## 2026-03-26 21:05 cycle
+
+### Zero-touch rate: 4/6 = 67% (PRs #6, #8, #9, #10 zero-touch; #7/#12 still open)
+
+### Living blog Phase 2 progress
+| PR | Feature | Status |
+|----|---------|--------|
+| #6 | daily-summary-cron | ✅ merged 19:56Z (zero-touch!) |
+| #7 | firestore-storage | PENDING — CI in_progress, CR pinged for re-review |
+| #8 | ao-lifecycle-hooks | ✅ merged 18:26Z |
+| #9 | worker-poster | ✅ merged ~20:10Z |
+| #10 | install-smoke-test | ✅ merged ~20:15Z |
+| #12 | agent-harness-overlay | WAITING CR — CI pass, pinged at 19:55Z |
+
+### New friction: post-merge duplicate PRs (recurring — 4th occurrence)
+- PR #15 "fix(worker-poster): address PR #9 review comments" created by jc-911
+- PR #9 already merged on 2026-03-26T~20:10Z
+- jc-911 still working on it at 12% ctx — sent stop message
+- **This is the 4th duplicate post-merge PR** (#11, #13, #14, #15)
+- Root cause: worker doesn't check if target PR is merged before looping on review comments
+- **Bead created: jleechan-wsn8** (P1 bug)
+
+### Worker status
+- jc-905 (41% ctx): polling PR #7 for CR response
+- jc-906 (42% ctx): idle, just completed /learn task
+- jc-910 (40% ctx): idle, fixed agent-stuck harness ({{pr_number}} literal in hooks)
+- jc-911 (12% ctx): was on PR #15 — stopped; near auto-compact
+- GraphQL: EXHAUSTED (0 remaining) — REST-only mode
+
+### Actions taken
+- Closed PR #15 via REST (4th duplicate closed)
+- Posted @coderabbitai on PR #7 (fresh re-review request)
+- Sent jc-911 stop message (PR #15 is duplicate, PR #9 already merged)
+- Created bead jleechan-wsn8 (post-merge duplicate PR loop)
+
+### Beads
+- jleechan-wsn8 (NEW): post-merge duplicate PR loop — P1 bug
+- jleechan-3h1o: CR stall 60min fallback — P2, open

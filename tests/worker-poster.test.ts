@@ -75,7 +75,8 @@ describe('postEvent', () => {
       jsonrpc: '2.0',
       id: 1,
       result: {
-        content: [{ type: 'text', text: '{"error":"schema validation failed"}', isError: true }],
+        isError: true,
+        content: [{ type: 'text', text: '{"error":"schema validation failed"}' }],
       },
     });
     await expect(

@@ -51,18 +51,15 @@ export async function postEvent(
     throw new Error(`Blog post failed: ${res.status}`);
   }
 
-  const data = await res.json() as { jsonrpc: string; id: unknown; error?: { code: number; message: string }; result?: { content: Array<{ text: string; isError?: boolean }> } };
+  const data = await res.json() as { jsonrpc: string; id: unknown; error?: { code: number; message: string }; result?: { isError?: boolean; content: Array<{ text: string; isError?: boolean }> } };
 
   if (data.error) {
     throw new Error(`Blog post failed: ${data.error.message}`);
   }
 
-  if (data.result?.content) {
-    for (const item of data.result.content) {
-      if (item.isError) {
-        const inner = JSON.parse(item.text) as { error?: string };
-        throw new Error(`Blog post failed: ${inner.error ?? item.text}`);
-      }
-    }
+  if (data.result?.isError && data.result.content?.[0]) {
+    const item = data.result.content[0];
+    const inner = JSON.parse(item.text) as { error?: string };
+    throw new Error(`Blog post failed: ${inner.error ?? item.text}`);
   }
 }

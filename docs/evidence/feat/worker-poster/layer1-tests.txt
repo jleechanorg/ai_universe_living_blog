@@ -3,7 +3,7 @@
 > vitest run tests/worker-poster.test.ts
 
 
- RUN  v1.6.1 /Users/jleechan/ai_universe_living_blog
+ RUN  v1.6.1 ~/ai_universe_living_blog
 
  ✓ tests/worker-poster.test.ts  (6 tests) 3ms
 

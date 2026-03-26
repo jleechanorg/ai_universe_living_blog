@@ -11,8 +11,9 @@
 
 import { describe, it, expect, afterAll, beforeAll } from 'vitest';
 import { execSync } from 'child_process';
-import { existsSync, mkdirSync, rmSync, writeFileSync } from 'fs';
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'fs';
 import { join } from 'path';
+import { tmpdir } from 'os';
 import { fileURLToPath } from 'url';
 import http from 'http';
 
@@ -41,12 +42,12 @@ function httpGet(port: number, path = '/health'): Promise<{ status: number; body
 }
 
 describe('install.sh smoke test', () => {
-  const TEST_DIR = join('/tmp', `install-smoke-test-${Date.now()}`);
+  const TEST_DIR = mkdtempSync(join(tmpdir(), 'install-smoke-test-'));
   let SERVER_PORT = 0; // assigned dynamically
 
   beforeAll(() => {
     // Create temp directory with git repo + package.json (install.sh requires both)
-    mkdirSync(TEST_DIR, { recursive: true });
+    // mkdtempSync already creates the directory; just verify it exists
     // Write a placeholder so the initial commit is not empty (avoids "nothing to commit" failure)
     writeFileSync(join(TEST_DIR, 'README.md'), '# test repo\n');
     exec('git init && git config user.email "test@test.com" && git config user.name "Test" && git add . && git commit -m "init"', TEST_DIR);
@@ -69,7 +70,7 @@ describe('install.sh smoke test', () => {
 
       // Use --source so install.sh copies from the LOCAL built repo instead of cloning from GitHub.
       // This lets the smoke test test the local build (which may differ from main).
-      exec(`bash "${scriptPath}" --target=${TEST_DIR} --source="${repoRoot}" --blog-only`, repoRoot);
+      exec(`bash "${scriptPath}" --target="${TEST_DIR}" --source="${repoRoot}" --blog-only`, repoRoot);
 
       // ── Verify dist/blog/server.js was installed ────────────────────────────
       const installedServer = join(TEST_DIR, 'node_modules', 'ai-universe-living-blog', 'dist', 'blog', 'server.js');

@@ -768,3 +768,29 @@ CR reviewed jc-905's push (2fa879c2) and posted new CHANGES_REQUESTED:
 - Waiting for CR to complete review on d486bc6cc2
 - Next cycle: check for APPROVED → merge via REST
 
+
+---
+
+## 2026-03-26 22:32 cycle (UTC)
+
+### Zero-touch rate: 5/6 = 83% → unchanged
+
+### PR #7 — commit churn loop detected (NEW FRICTION)
+- jc-910 pushed "trigger CR re-review" commit (471be68bca) after compacting
+- Total useless commits: c0b08984c6 (annotate), a0665dad95 (nudge), 471be68bca (trigger) = 3 churn commits
+- Pattern: each new commit causes CR to auto-dismiss previous review → worker pushes another commit → loop
+- CI in_progress on 471be68bca
+- jc-910 at 8% until next auto-compact
+
+### Root cause (commit churn loop)
+- Worker misinterprets CR DISMISSED as "CR didn't see the fix" → pushes another commit
+- DISMISSED means CR auto-invalidated its stale review on new push — NOT a new review
+- Workers should wait for CR to complete analysis on current HEAD, not push more commits
+
+### Actions
+- Sent STOP command to jc-910: no more commits
+- Will post @coderabbitai review once CI settles on 471be68bca
+
+### Bead needed
+- P2: Document in CLAUDE.md that CR DISMISSED = auto-invalidation of stale review, NOT a new review state
+

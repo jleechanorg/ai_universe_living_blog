@@ -8,6 +8,7 @@
 #
 # Options:
 #   --target=DIR      Target repo (default: current directory)
+#   --source=DIR      Use local source dir instead of cloning from GitHub (for testing)
 #   --blog-only      Install blog MCP server only
 #   --novel-only     Install novel engine only
 #   --no-mcp         Skip MCP server config
@@ -17,6 +18,7 @@
 set -euo pipefail
 
 TARGET=""
+SOURCE_DIR=""
 BLOG_ONLY=""
 NOVEL_ONLY=""
 NO_MCP=""
@@ -25,6 +27,7 @@ DRY_RUN=""
 while [[ $# -gt 0 ]]; do
   case $1 in
     --target=*) TARGET="${1#*=}"; shift ;;
+    --source=*) SOURCE_DIR="${1#*=}"; shift ;;
     --blog-only) BLOG_ONLY=1; shift ;;
     --novel-only) NOVEL_ONLY=1; shift ;;
     --no-mcp) NO_MCP=1; shift ;;
@@ -77,15 +80,21 @@ fi
 # ─── Bootstrap temp dir ────────────────────────────────────────────────────────
 if [[ -z "${DRY_RUN}" ]]; then
   mkdir -p "${TEMP_DIR}"
-  log "Cloning ai_universe_living_blog..."
-  if git clone --depth=1 https://github.com/jleechanorg/ai_universe_living_blog.git "${TEMP_DIR}/src" 2>&1; then
-    : # success
+  if [[ -n "${SOURCE_DIR}" ]]; then
+    # Use local source (for smoke tests that run against a local build)
+    log "Using local source: ${SOURCE_DIR}"
+    cp -r "${SOURCE_DIR}/." "${TEMP_DIR}/src/"
   else
-    git clone --depth=1 git@github.com:jleechanorg/ai_universe_living_blog.git "${TEMP_DIR}/src" || die "Clone failed"
+    log "Cloning ai_universe_living_blog..."
+    if git clone --depth=1 https://github.com/jleechanorg/ai_universe_living_blog.git "${TEMP_DIR}/src" 2>&1; then
+      : # success
+    else
+      git clone --depth=1 git@github.com:jleechanorg/ai_universe_living_blog.git "${TEMP_DIR}/src" || die "Clone failed"
+    fi
   fi
 fi
 
-# Source root inside the cloned repo (repo root is at ${TEMP_DIR}/src/)
+# Source root inside the cloned/local repo (repo root is at ${TEMP_DIR}/src/)
 SRC_ROOT="${TEMP_DIR}/src"
 
 # ─── Install blog ─────────────────────────────────────────────────────────────
@@ -96,14 +105,17 @@ install_blog() {
   if [[ -z "${DRY_RUN}" ]]; then
     mkdir -p "${dest}"
     # Build TypeScript so dist/ exists — single authoritative build step.
-    # Copy built JS so the MCP path always refers to a file that exists
-    # regardless of whether install_npm_dep() overwrites with the published package.
-    if command -v npm &>/dev/null && [[ -f "${SRC_ROOT}/package.json" ]]; then
+    # Skip if --source was used (local source already has node_modules + dist/).
+    if [[ -z "${SOURCE_DIR}" ]] && command -v npm &>/dev/null && [[ -f "${SRC_ROOT}/package.json" ]]; then
       (cd "${SRC_ROOT}" && npm install --silent 2>/dev/null && npm run build) || \
         die "npm build failed in ${SRC_ROOT} — cannot install blog"
     fi
-    cp -r "${SRC_ROOT}/dist/blog" "${dest}/dist/"
+    mkdir -p "${dest}/dist/blog"
+    cp -r "${SRC_ROOT}/dist/blog/"* "${dest}/dist/blog/"
     cp -r "${SRC_ROOT}/dist/shared" "${dest}/dist/"
+    # Copy npm dependencies so the server can resolve express, cors, etc.
+    # at the TARGET level (not inside the package subdirectory).
+    cp -r "${SRC_ROOT}/node_modules/"* "${TARGET}/node_modules/" 2>/dev/null || true
   fi
   log "  → Blog server: ${dest}/dist/blog"
   log "  → MCP path: ${dest}/dist/blog/server.js"

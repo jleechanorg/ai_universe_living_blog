@@ -30,6 +30,15 @@ jobs:
         run: npm ci
 
       - name: Generate and post novel entry
+        # Inject head_ref via env to avoid shell-injection from malicious branch names.
+        # GitHub Actions automatically JSON-encodes env var values, escaping special chars.
+        env:
+          HEAD_REF: ${{ github.head_ref }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+          SESSION_ID: gh-actions-${{ github.run_id }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          BLOG_MCP_URL: ${{ secrets.BLOG_MCP_URL }}
         run: |
           ACTION="${{ github.event.action }}"
           if [ "$ACTION" = "opened" ]; then
@@ -42,11 +51,8 @@ jobs:
             EVENT_TYPE="pr_reopened"
           fi
           npm run start:novel -- branch-entry \
-            --repo=${{ github.repository }} \
-            --session=gh-actions-${{ github.run_id }} \
-            --branch=${{ github.head_ref }} \
-            --pr=${{ github.event.pull_request.number }} \
+            --repo="$REPO" \
+            --session="$SESSION_ID" \
+            --branch="$HEAD_REF" \
+            --pr="$PR_NUMBER" \
             --event="$EVENT_TYPE"
-        env:
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-          BLOG_MCP_URL: ${{ secrets.BLOG_MCP_URL }}

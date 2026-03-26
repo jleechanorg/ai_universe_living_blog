@@ -1,8 +1,12 @@
 import { describe, it, expect } from 'vitest';
-import { handlePrEvent, type PrEvent } from '../src/hooks/ao-lifecycle.js';
+import { handlePrEvent, buildArgv, type PrEvent } from '../src/hooks/ao-lifecycle.js';
 
 describe('handlePrEvent', () => {
-  it('calls runCli with branch-entry command for pr_opened', async () => {
+  // runCli receives argv: string[] — use expect.arrayContaining to match elements
+  const contain = (substring: string) =>
+    expect.arrayContaining([expect.stringContaining(substring)]);
+
+  it('calls runCli for pr_opened', async () => {
     const runCli = vi.fn().mockResolvedValue(undefined);
     const event: PrEvent = {
       type: 'pr_opened',
@@ -13,24 +17,14 @@ describe('handlePrEvent', () => {
     };
     await handlePrEvent(event, runCli);
     expect(runCli).toHaveBeenCalledOnce;
-    expect(runCli).toHaveBeenCalledWith(
-      expect.stringContaining('branch-entry'),
-    );
-    expect(runCli).toHaveBeenCalledWith(
-      expect.stringContaining('--pr=42'),
-    );
-    expect(runCli).toHaveBeenCalledWith(
-      expect.stringContaining('--repo=owner/repo'),
-    );
-    expect(runCli).toHaveBeenCalledWith(
-      expect.stringContaining('--session=ao-826'),
-    );
-    expect(runCli).toHaveBeenCalledWith(
-      expect.stringContaining('--branch=feat/x'),
-    );
+    expect(runCli).toHaveBeenCalledWith(contain('branch-entry'));
+    expect(runCli).toHaveBeenCalledWith(contain('--pr=42'));
+    expect(runCli).toHaveBeenCalledWith(contain('--repo=owner/repo'));
+    expect(runCli).toHaveBeenCalledWith(contain('--session=ao-826'));
+    expect(runCli).toHaveBeenCalledWith(contain('--branch=feat/x'));
   });
 
-  it('calls runCli with branch-entry command for pr_merged', async () => {
+  it('calls runCli for pr_merged', async () => {
     const runCli = vi.fn().mockResolvedValue(undefined);
     const event: PrEvent = {
       type: 'pr_merged',
@@ -41,10 +35,10 @@ describe('handlePrEvent', () => {
     };
     await handlePrEvent(event, runCli);
     expect(runCli).toHaveBeenCalledOnce;
-    expect(runCli).toHaveBeenCalledWith(expect.stringContaining('--pr=99'));
+    expect(runCli).toHaveBeenCalledWith(contain('--pr=99'));
   });
 
-  it('calls runCli with branch-entry command for pr_reopened', async () => {
+  it('calls runCli for pr_reopened', async () => {
     const runCli = vi.fn().mockResolvedValue(undefined);
     const event: PrEvent = {
       type: 'pr_reopened',
@@ -55,10 +49,10 @@ describe('handlePrEvent', () => {
     };
     await handlePrEvent(event, runCli);
     expect(runCli).toHaveBeenCalledOnce;
-    expect(runCli).toHaveBeenCalledWith(expect.stringContaining('--pr=3'));
+    expect(runCli).toHaveBeenCalledWith(contain('--pr=3'));
   });
 
-  it('calls runCli with branch-entry command for pr_closed', async () => {
+  it('calls runCli for pr_closed', async () => {
     const runCli = vi.fn().mockResolvedValue(undefined);
     const event: PrEvent = {
       type: 'pr_closed',
@@ -69,7 +63,7 @@ describe('handlePrEvent', () => {
     };
     await handlePrEvent(event, runCli);
     expect(runCli).toHaveBeenCalledOnce;
-    expect(runCli).toHaveBeenCalledWith(expect.stringContaining('--pr=7'));
+    expect(runCli).toHaveBeenCalledWith(contain('--pr=7'));
   });
 
   it('skips runCli for pr_review_requested', async () => {
@@ -123,7 +117,7 @@ describe('handlePrEvent', () => {
     await expect(handlePrEvent(event, runCli)).rejects.toThrow('network error');
   });
 
-  it('assembles command with all required args', async () => {
+  it('assembles argv with all required args', async () => {
     const runCli = vi.fn().mockResolvedValue(undefined);
     const event: PrEvent = {
       type: 'pr_opened',
@@ -133,11 +127,44 @@ describe('handlePrEvent', () => {
       branch: 'feat/awesome',
     };
     await handlePrEvent(event, runCli);
-    const [cmd] = runCli.mock.calls[0]!;
-    expect(cmd).toContain('branch-entry');
-    expect(cmd).toContain('--repo=jleechanorg/ai_universe_living_blog');
-    expect(cmd).toContain('--pr=404');
-    expect(cmd).toContain('--session=gh-actions-12345');
-    expect(cmd).toContain('--branch=feat/awesome');
+    const [argv] = runCli.mock.calls[0]!;
+    expect(argv).toContain('branch-entry');
+    expect(argv).toContain('--repo=jleechanorg/ai_universe_living_blog');
+    expect(argv).toContain('--pr=404');
+    expect(argv).toContain('--session=gh-actions-12345');
+    expect(argv).toContain('--branch=feat/awesome');
+  });
+});
+
+describe('buildArgv', () => {
+  it('builds correct argv array without eventType', () => {
+    const argv = buildArgv({
+      type: 'pr_opened',
+      repo: 'owner/repo',
+      pr: 42,
+      session: 'ao-826',
+      branch: 'feat/x',
+    });
+    expect(argv).toEqual([
+      'branch-entry',
+      '--repo=owner/repo',
+      '--session=ao-826',
+      '--branch=feat/x',
+      '--pr=42',
+    ]);
+  });
+
+  it('builds correct argv array with eventType', () => {
+    const argv = buildArgv(
+      {
+        type: 'pr_opened',
+        repo: 'owner/repo',
+        pr: 42,
+        session: 'ao-826',
+        branch: 'feat/x',
+      },
+      'pr_opened',
+    );
+    expect(argv).toContain('--event=pr_opened');
   });
 });

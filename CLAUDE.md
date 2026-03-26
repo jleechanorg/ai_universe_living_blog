@@ -87,6 +87,91 @@ npm run dev:novel -- daily-summary \
 - **Bead system**: 15 reusable story beads tracked across installments — add new beads to `beads.ts`
 - **Editor pass is graceful**: if `ANTHROPIC_API_KEY` is missing, raw content is posted without editing
 
+## PR Evidence Standard — /4layer Required
+
+Every PR to this repo must include **4-layer evidence** before merge. Adapted for TypeScript/Node.js:
+
+### Layer 1: Unit Tests
+```bash
+npm test
+# Vitest — all tests must pass. Attach: test output (pass/fail counts, timing)
+```
+
+### Layer 2: Integration / End-to-End Tests
+```bash
+# Run any integration tests (tests/ directory)
+npm test -- --reporter=verbose
+# Attach: full test output with file paths
+```
+
+### Layer 3: MCP/HTTP API Tests (Real Local Server)
+```bash
+# Start the server
+npm run dev:blog &
+sleep 2
+
+# Health check
+curl -s http://localhost:8081/health | jq .
+
+# Exercise each MCP tool via JSON-RPC
+curl -s -X POST http://localhost:8081/mcp \
+  -H 'Content-Type: application/json' \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"health_check","arguments":{}}}' | jq .
+
+# Attach: curl outputs showing tool responses, server logs
+```
+
+### Layer 4: Visual Evidence (Screenshots + Video) — REQUIRED
+**This layer is mandatory for every PR.** Must include:
+
+1. **Screenshots with captions** (minimum 3):
+   - Server startup log (caption: "Server started on port 8081")
+   - Health endpoint response in terminal (caption: "Health check returns OK")
+   - At least one MCP tool call response (caption: "create_post tool call succeeds")
+
+2. **Screen recording with captions** (minimum 1, ~30–60 seconds):
+   - Record the full flow: start server → health check → create_post → list_posts
+   - Narrate in captions what each step demonstrates
+   - Save as `.mp4` or `.gif` in `docs/evidence/<branch>/`
+
+**Evidence directory structure:**
+```
+docs/evidence/<branch-name>/
+  layer1-tests.txt          # npm test output
+  layer2-integration.txt    # integration test output
+  layer3-api/
+    health.json             # curl /health response
+    create_post.json        # tool call response
+    list_posts.json         # tool call response
+  layer4-visual/
+    01-server-startup.png   # caption in filename or companion .md
+    02-health-check.png
+    03-mcp-tool-call.png
+    demo.mp4                # screen recording with captions
+  evidence.md               # summary linking all artifacts
+```
+
+**Evidence summary template** (`evidence.md`):
+```markdown
+## PR Evidence — <branch>
+
+### Layer 1: Unit Tests
+- Result: PASS / FAIL
+- Output: [layer1-tests.txt](layer1-tests.txt)
+
+### Layer 2: Integration Tests
+- Result: PASS / FAIL
+- Output: [layer2-integration.txt](layer2-integration.txt)
+
+### Layer 3: API Tests (Real Server)
+- Health: [health.json](layer3-api/health.json)
+- create_post: [create_post.json](layer3-api/create_post.json)
+
+### Layer 4: Visual Evidence
+- Screenshots: 01-server-startup.png, 02-health-check.png, 03-mcp-tool-call.png
+- Recording: [demo.mp4](layer4-visual/demo.mp4) — shows full flow: start → health → create_post → list_posts
+```
+
 ## Environment Variables
 
 | Variable | Default | Description |

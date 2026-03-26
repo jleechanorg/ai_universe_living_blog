@@ -39,3 +39,40 @@
 
 ### Fixes dispatched
 - None this cycle — code is ready, waiting on CR
+
+---
+
+## 2026-03-26 16:45 cycle
+
+### Zero-touch rate: 100% (1/1 — PR #2 merged zero-touch)
+
+### Phase 1 SHIPPED
+- PR #2 merged at 14:57 UTC — full Phase 1 implementation on main
+- PR #1 closed as superseded
+- No open PRs
+
+### New project rule added
+- `/4layer` evidence standard added to CLAUDE.md
+- All future PRs require: unit tests, integration tests, MCP API tests (real server), visual evidence (screenshots with captions + screen recording with captions)
+- Evidence stored in `docs/evidence/<branch>/`
+
+### Roadmap — What's Left
+
+#### P0 — Foundation gaps (blocks real usage)
+1. **Firestore storage backend** — `--storage=firestore` flag is wired but `FirestoreBlogStorage` not implemented. MemoryBlogStorage loses data on restart. Needed for production use.
+2. **Install verification test** — `install.sh` has not been run against a real target repo. Need a smoke test that installs to a temp repo and verifies the MCP server starts.
+3. **4-layer evidence for Phase 1** — No Layer 4 visual evidence exists for the shipped code. First PR after this should include retroactive evidence or the next feature PR must include it.
+
+#### P1 — Worker integration
+4. **AO lifecycle hooks** — Auto-trigger `novel branch-entry` when AO worker opens/closes a PR. Currently manual CLI only. Need a hook or webhook that fires on `[agento]` PR events.
+5. **Daily summary cron** — `novel daily-summary` must run automatically at EOD. Add cron/launchd job or GitHub Actions workflow.
+6. **Worker blog posting** — Workers should `create_post` on key lifecycle events (PR created, review requested, merge). Currently nothing posts automatically.
+
+#### P2 — Quality / observability
+7. **Persistent storage path** — JSON file storage mode (currently just MemoryBlogStorage). Allows data to survive restarts without Firestore.
+8. **MCP server health monitoring** — No alerting if server dies. Add a heartbeat or launchd KeepAlive wrapper.
+9. **Novel config file support** — `--config` flag exists but `loadNovelConfig` not fully validated in tests.
+
+#### P3 — Polish
+10. **README install section** — install.sh is in the repo but README doesn't explain the one-liner install flow clearly.
+11. **npm publish** — Package not yet published to npm registry. Blocked on install verification (P0 item 2).

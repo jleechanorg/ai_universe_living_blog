@@ -52,7 +52,6 @@ export async function postEvent(
       body: JSON.stringify(body),
       signal: controller.signal,
     });
-    clearTimeout(timeout);
 
     if (!res.ok) throw new Error(`Blog post failed: ${res.status}`);
 
@@ -91,5 +90,9 @@ export async function postEvent(
       throw new Error(`Blog post failed: request timed out after ${DEFAULT_TIMEOUT_MS}ms`);
     }
     throw err;
+  } finally {
+    // Clear the timeout once the full response (including body) has been consumed.
+    // This ensures the timeout protects the entire fetch + res.json() window.
+    clearTimeout(timeout);
   }
 }

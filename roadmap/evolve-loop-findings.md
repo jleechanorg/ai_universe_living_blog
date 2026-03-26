@@ -524,3 +524,27 @@ Creates noise. Worker should check if PR was already merged before addressing re
 - jc-910 (46% ctx): fixing PR #12 CR issues
 - jc-911 (9% ctx): near auto-compact, idle
 - jc-906 (42% ctx): idle on feat/jleechan-ugm0
+
+---
+
+## 2026-03-26 21:32 cycle
+
+### Zero-touch rate: 4/6 = 67% → unchanged
+
+### PR #12 fix complete (jc-910)
+- AGENTS.md symlink claim fixed, agent_repo_check.py ValueError fixed
+- 52 tests pass, pushed 6ff5696, mergeable clean, CI neutral
+- Posted `@coderabbitai review` at 20:32 — waiting for re-review
+
+### PR #7 new CR CHANGES_REQUESTED (20:21)
+CR reviewed jc-905's push (2fa879c2) and posted new CHANGES_REQUESTED:
+1. src/novel/cli.ts: Validate `--storage` explicitly (fail fast, not type-cast)
+2. Duplicate of earlier comment (tests/storage-factory.test.ts firestore branch)
+- jc-905 (64% ctx) notified — waiting for CI to finish then will fix
+- CI still in_progress on 2fa879c2
+
+### Worker status
+- jc-905 (64% ctx): sleeping 180s for CI, then will fix new CR issues
+- jc-910 (51% ctx): complete (PR #12 fixes done)
+- jc-911 (9% ctx): near auto-compact
+- GraphQL: 4231 remaining

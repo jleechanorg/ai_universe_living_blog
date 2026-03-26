@@ -24,8 +24,7 @@ export type NovelSkipEventType = (typeof NOVEL_SKIP_EVENT_TYPES)[number];
 export type PrEventType =
   | NovelTriggerEventType
   | NovelSkipEventType
-  | 'pr_draft_toggled'
-  | 'pr_reopened';
+  | 'pr_draft_toggled';
 
 /** A single PR lifecycle event emitted by the AO lifecycle hook runner */
 export interface PrEvent {

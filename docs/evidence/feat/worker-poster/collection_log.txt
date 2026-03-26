@@ -1,0 +1,22 @@
+# Evidence Collection Log — feat/worker-poster
+# PR: https://github.com/jleechanorg/ai_universe_living_blog/pull/9
+
+# Layer 1: Unit Tests
+2026-03-26T18:46:16Z | npm test -- tests/worker-poster.test.ts | 9/9 passing | artifact: layer1-tests.txt
+  Command: cd ~/ai_universe_living_blog && npm test -- tests/worker-poster.test.ts
+  Result: vitest run — 9 tests passing in 159ms
+
+# Layer 2: Integration Tests
+2026-03-26T18:46:16Z | npm test | 54/54 passing across 4 test files | artifact: layer2-integration.txt
+  Command: cd ~/ai_universe_living_blog && npm test
+  Result: vitest run — 54 tests passing, 4 test files
+
+# Layer 3: API Validation
+2026-03-26T11:30:00Z | curl http://localhost:8081/health | artifact: layer3-api/health.json
+2026-03-26T11:30:05Z | curl -X POST http://localhost:8081/mcp (create_post) | artifact: layer3-api/create_post.json
+2026-03-26T11:30:10Z | curl -X POST http://localhost:8081/mcp (list_posts) | artifact: layer3-api/list_posts.json
+  Note: Server was running on port 8081 via `npm run dev:blog`
+
+# Layer 4: Visual Evidence
+2026-03-26T11:30:20Z | Screenshot of unit test output | artifact: layer4-visual/01-unit-tests.png
+  Tool: macOS screenshot (⌘⇧4) capturing terminal output showing 9 passing tests

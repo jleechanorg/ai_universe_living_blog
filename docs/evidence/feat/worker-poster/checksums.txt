@@ -1,0 +1,8 @@
+# SHA256 checksums for evidence artifacts
+# Generated: 2026-03-26
+bb9c7f8c1098b7a301db9cf0342c8c1ba28fe41d0f886b0148da182a44759019  layer1-tests.txt
+8548569d81d58632b96f2a860ef5486da210ed683e9ee3312a777036345b8aed  layer2-integration.txt
+d173f4fed0bb0260116f5ed7aade6de7e4325a8074f33f33a65074933f27d451  layer3-api/health.json
+5cb9821c8b8a67b39b4f15ad74a309a9d58043776a89e68b6a23a838e18bb249  layer3-api/create_post.json
+08f6687c775d5e1f323f28e51c3792e1b05ebccf846c6d5f42a0673ecbfacdf8  layer3-api/list_posts.json
+277922d03754e473f512fbe91ece0f2e2805b8d8484a4824692312fae50a9633  layer4-visual/01-unit-tests.png

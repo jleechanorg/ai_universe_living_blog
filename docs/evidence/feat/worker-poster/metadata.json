@@ -1,0 +1,18 @@
+{
+  "feature": "worker-poster",
+  "pr": "https://github.com/jleechanorg/ai_universe_living_blog/pull/9",
+  "issue": "jleechan-yl5g",
+  "phase": "phase2-roadmap",
+  "priority": "P1-3",
+  "layer1_sha256": {
+    "src/hooks/worker-poster.ts": "e9ecfb05a006739d474118684757c572b6644254e9348f100b4e1e490726f451",
+    "tests/worker-poster.test.ts": "7e15ed274abadfc8cbf60eca0ccb1d5210ab900facab5c152576cbfb8f447a9b",
+    "src/hooks/index.ts": "09be8d920b0f9c092980b04360e34f591f6b9e9e80cf8c5202a638465b943967"
+  },
+  "test_counts": {
+    "worker_poster_test_ts": 9,
+    "total_suite": 54
+  },
+  "verification_date": "2026-03-26",
+  "verification_summary": "All 54 tests passing across 4 test files. TypeScript typecheck clean. ESLint clean."
+}

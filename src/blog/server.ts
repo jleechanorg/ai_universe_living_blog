@@ -36,9 +36,11 @@ const getPort = () => {
 // Storage factory — reads --storage CLI flag or STORAGE_TYPE env var.
 // Defaults to 'memory' so zero-config local dev works out of the box.
 const STORAGE_TYPE = (() => {
-  // Check --storage=xxx in process.argv
-  const flag = process.argv.find((a) => a.startsWith('--storage='));
-  if (flag) return flag.split('=')[1]!;
+  // Check --storage=xxx or --storage xxx in process.argv
+  const eqFlag = process.argv.find((a) => a.startsWith('--storage='));
+  if (eqFlag) return eqFlag.split('=')[1]!;
+  const idx = process.argv.findIndex((a) => a === '--storage');
+  if (idx !== -1 && idx + 1 < process.argv.length) return process.argv[idx + 1]!;
   return process.env['STORAGE_TYPE'] ?? 'memory';
 })();
 

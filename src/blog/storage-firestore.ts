@@ -164,6 +164,8 @@ export class FirestoreBlogStorage implements BlogStorage {
       const cursorDoc = await this.postsCol.doc(params.cursor).get();
       if (cursorDoc.exists) {
         q = query.startAfter(cursorDoc).limit(limit);
+      } else {
+        logger.debug('Firestore: Invalid cursor, returning from start', { cursor: params.cursor });
       }
     }
 

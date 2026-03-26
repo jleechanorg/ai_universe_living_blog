@@ -1,6 +1,9 @@
 import { describe, it, expect } from 'vitest';
 import { createStorage, type StorageOptions } from '../src/blog/storage-factory.js';
 import { MemoryBlogStorage } from '../src/blog/storage.js';
+import { FirestoreBlogStorage } from '../src/blog/storage-firestore.js';
+
+const skipIfNoEmulator = process.env.FIRESTORE_EMULATOR_HOST ? it : it.skip;
 
 describe('createStorage', () => {
   it('creates MemoryBlogStorage when type=memory', () => {
@@ -20,5 +23,10 @@ describe('createStorage', () => {
     // Both should work and be equivalent instances (same class)
     expect(s1).toBeInstanceOf(MemoryBlogStorage);
     expect(s2).toBeInstanceOf(MemoryBlogStorage);
+  });
+
+  skipIfNoEmulator('creates FirestoreBlogStorage when type=firestore', () => {
+    const storage = createStorage({ type: 'firestore', collection: 'test-factory-posts' });
+    expect(storage).toBeInstanceOf(FirestoreBlogStorage);
   });
 });

@@ -605,3 +605,34 @@ CR reviewed jc-905's push (2fa879c2) and posted new CHANGES_REQUESTED:
 ### Actions
 - Dispatched jc-910 as PR #7 backup worker
 - CR review triggered on PR #12
+
+---
+
+## 2026-03-26 22:12 cycle ⭐ PR #12 MERGED zero-touch!
+
+### Zero-touch rate: ↑↑ 5/6 = 83%
+
+### PR #12 MERGED ✅ sha=cfb3202a8181
+- CR APPROVED at 20:24, CI neutral, mergeable clean
+- Merged via REST (zero-touch)
+
+### Living blog Phase 2 progress
+| PR | Feature | Status |
+|----|---------|--------|
+| #6 | daily-summary-cron | ✅ merged 19:56Z |
+| #7 | firestore-storage | OPEN — new commit 9c4d3a5f87 (threadId fix), CI in_progress |
+| #8 | ao-lifecycle-hooks | ✅ merged 18:26Z |
+| #9 | worker-poster | ✅ merged ~20:10Z |
+| #10 | install-smoke-test | ✅ merged ~20:15Z |
+| #12 | agent-harness-overlay | ✅ merged 22:12Z (zero-touch!) |
+
+### PR #7 status
+- jc-905 pushed threadId immutability fix (9c4d3a5f87) before auto-compacting
+- CI in_progress, old CR CHANGES_REQUESTED DISMISSED
+- Pinged @coderabbitai review at 21:12
+- jc-910 (55% ctx) now monitoring, will merge when green
+
+### Actions
+- Merged PR #12 via REST (zero-touch) ✅
+- Pinged CR on PR #7 for new commit review
+- Dispatched jc-910 to monitor and merge PR #7

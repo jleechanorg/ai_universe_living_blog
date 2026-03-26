@@ -112,14 +112,24 @@ export class FirestoreBlogStorage implements BlogStorage {
   async updatePost(id: string, updates: Partial<Post>): Promise<Post> {
     const existing = await this.getPost(id);
     if (!existing) throw new Error(`Post not found: ${id}`);
-    // id and repoKey are immutable — reject attempts to change them
+    // id, repoKey, and threadId are immutable — reject attempts to change them
     if (updates.id !== undefined && updates.id !== id) {
       throw new Error('Updating post id is not allowed');
     }
     if (updates.repoKey !== undefined && updates.repoKey !== existing.repoKey) {
       throw new Error('Updating post repoKey is not allowed');
     }
-    const updated: Post = { ...existing, ...updates, id, repoKey: existing.repoKey, updatedAt: new Date().toISOString() };
+    if (updates.threadId !== undefined && updates.threadId !== existing.threadId) {
+      throw new Error('Updating post threadId is not allowed');
+    }
+    const updated: Post = {
+      ...existing,
+      ...updates,
+      id,
+      repoKey: existing.repoKey,
+      threadId: existing.threadId,
+      updatedAt: new Date().toISOString(),
+    };
     await this.postsCol.doc(id).set(updated);
     return updated;
   }

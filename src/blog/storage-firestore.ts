@@ -47,7 +47,9 @@ export class FirestoreBlogStorage implements BlogStorage {
   private threadsCol: CollectionReference;
 
   constructor(opts: FirestoreStorageOptions = {}) {
-    const firestoreOpts: { projectId?: string } = {};
+    const firestoreOpts: { projectId?: string; ignoreUndefinedProperties?: boolean } = {
+      ignoreUndefinedProperties: true,
+    };
     if (opts.projectId) firestoreOpts.projectId = opts.projectId;
     this.db = new Firestore(firestoreOpts);
 

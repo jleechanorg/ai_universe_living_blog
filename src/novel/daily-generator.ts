@@ -271,9 +271,6 @@ function renderBeadTrackerMarkdown(beadIds: string[]): string {
 }
 
 /**
- * Fetch all posts for a given date from storage.
- */
-/**
  * Determine whether the daily summary pipeline should run for a given date.
  * Returns true if there are at least 3 posts for the given date and repo.
  * Logs a warning and returns false when the threshold is not met.
@@ -296,6 +293,9 @@ export async function shouldRunDailySummary(
   return false;
 }
 
+/**
+ * Fetch all posts for a given date from storage.
+ */
 export async function fetchDailyPosts(storage: BlogStorage, repoKey: RepoKey, date: string): Promise<Post[]> {
   // Paginate through the full repo history so no posts are dropped from older days.
   const allPosts: Post[] = [];

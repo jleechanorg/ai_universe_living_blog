@@ -136,16 +136,26 @@ install_mcp_config() {
   local claude_json="${HOME}/.claude.json"
   # MCP path after build: dist/blog/server.js
   local mcp_path="${TARGET}/node_modules/ai-universe-living-blog/dist/blog/server.js"
-  local mcp_entry="blog-mcp"
 
   if [[ -z "${DRY_RUN}" ]]; then
-    if [[ -f "${claude_json}" ]]; then
-      if grep -q '"mcpServers"' "${claude_json}"; then
-        warn "~/.claude.json already has mcpServers — append this manually:"
-        warn "  {\"blog-mcp\": {\"command\":\"node\",\"args\":[\"${mcp_path}\"]}}"
+    if [[ -f "${claude_json}" ]] && command -v jq &>/dev/null; then
+      # Safe read-modify-write: merge blog-mcp into existing mcpServers, preserve all other keys
+      local tmp
+      tmp=$(mktemp)
+      if jq --arg path "${mcp_path}" \
+         '.mcpServers += {"blog-mcp": {"command":"node","args":[$path]}}' \
+         "${claude_json}" > "${tmp}"; then
+        mv "${tmp}" "${claude_json}"
+        log "~/.claude.json updated with blog-mcp server (existing config preserved)"
+        log "Restart Claude Code to load the MCP server"
       else
-        warn "~/.claude.json exists without mcpServers key — append manually"
+        warn "Failed to merge into ~/.claude.json — append manually:"
+        warn "  {\"blog-mcp\": {\"command\":\"node\",\"args\":[\"${mcp_path}\"]}}"
+        rm -f "${tmp}"
       fi
+    elif [[ -f "${claude_json}" ]]; then
+      warn "~/.claude.json exists but jq is not available — append manually:"
+      warn "  {\"blog-mcp\": {\"command\":\"node\",\"args\":[\"${mcp_path}\"]}}"
     else
       cat > "${claude_json}" <<EOF
 {

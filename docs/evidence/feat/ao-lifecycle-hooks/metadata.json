@@ -1,0 +1,17 @@
+{
+  "bundle_version": "1.0.0",
+  "run_id": "jc-907-feat-ao-lifecycle-hooks",
+  "iteration": 1,
+  "provenance": {
+    "git_head": "0e18999753b155e3cb0b978ccdcc0fd95fb92cec",
+    "git_branch": "feat/ao-lifecycle-hooks",
+    "merge_base": "b187659",
+    "commits_ahead_of_main": 7
+  },
+  "diff_stat_vs_main": "+659/-0 across 15 files",
+  "bundle_timestamp": "2026-03-26T18:00:00Z",
+  "pr_url": "https://github.com/jleechanorg/ai_universe_living_blog/pull/8",
+  "repo": "jleechanorg/ai_universe_living_blog",
+  "layer4_http_port": 8084,
+  "layer4_server_cmd": "PORT=8084 npm run dev:blog"
+}

@@ -1,0 +1,9 @@
+$ npm run test:install
+
+ RUN  v1.6.1 /Users/jleechan/.worktrees/ai_universe_living_blog
+ ✓ tests/install.test.ts  (1 test) 13654ms
+ Test Files  1 passed (1)
+      Tests  1 passed (1)
+   Duration  13.82s
+
+Full suite: 41 passed | 6 skipped (47 total)

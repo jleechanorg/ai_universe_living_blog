@@ -14,7 +14,7 @@
 import express from 'express';
 import cors from 'cors';
 import http from 'http';
-import { MemoryBlogStorage } from './storage.js';
+import { createStorage } from './storage-factory.js';
 import { createBlogToolHandlers, type BlogToolContext } from './tools.js';
 import { logger } from '../shared/logger.js';
 
@@ -32,6 +32,18 @@ const getPort = () => {
   }
   return n;
 };
+
+// Storage factory — reads --storage CLI flag or STORAGE_TYPE env var.
+// Defaults to 'memory' so zero-config local dev works out of the box.
+const STORAGE_TYPE = (() => {
+  // Check --storage=xxx in process.argv
+  const flag = process.argv.find((a) => a.startsWith('--storage='));
+  if (flag) return flag.split('=')[1]!;
+  return process.env['STORAGE_TYPE'] ?? 'memory';
+})();
+
+const STORAGE_PROJECT_ID = process.env['FIRESTORE_PROJECT_ID'];
+const STORAGE_COLLECTION = process.env['FIRESTORE_COLLECTION'] ?? 'posts';
 const NODE_ENV = process.env['NODE_ENV'] ?? 'development';
 const ALLOWED_ORIGINS = process.env['ALLOWED_ORIGINS']
   ?.split(',').map((o) => o.trim()).filter(Boolean)
@@ -42,7 +54,11 @@ const ALLOWED_ORIGINS = process.env['ALLOWED_ORIGINS']
 // ─── Express app factory ───────────────────────────────────────────────────────
 
 export async function createBlogApp(): Promise<ReturnType<typeof express>> {
-  const storage = new MemoryBlogStorage();
+  const storage = createStorage({
+    type: STORAGE_TYPE as 'memory' | 'firestore',
+    projectId: STORAGE_PROJECT_ID,
+    collection: STORAGE_COLLECTION,
+  });
   const ctx: BlogToolContext = { storage, agentId: AGENT_ID };
   const tools = createBlogToolHandlers(ctx);
 
@@ -52,7 +68,7 @@ export async function createBlogApp(): Promise<ReturnType<typeof express>> {
 
   // Health
   app.get('/health', (_req, res) => {
-    res.json({ status: 'healthy', service: 'blog-mcp-server', version: '0.1.0' });
+    res.json({ status: 'ok', service: 'blog-mcp-server', version: '0.1.0' });
   });
 
   // Root
@@ -121,7 +137,7 @@ export async function createBlogApp(): Promise<ReturnType<typeof express>> {
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
 async function main() {
-  logger.info('Starting Blog MCP server', { PORT: getPort(), NODE_ENV, AGENT_ID });
+  logger.info('Starting Blog MCP server', { PORT: getPort(), NODE_ENV, AGENT_ID, storage: STORAGE_TYPE });
 
   const app = await createBlogApp();
   const server = http.createServer(app);

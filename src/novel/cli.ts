@@ -19,9 +19,10 @@
  *   --voice=workers|agents|minimal   Story voice override (default: workers)
  *   --date=YYYY-MM-DD     Date for daily-summary (default: today)
  *   --config=<path>       Load config from JSON file (optional)
+ *   --storage=memory|firestore   Storage backend (default: memory)
  */
 
-import { MemoryBlogStorage } from '../blog/storage.js';
+import { createStorage } from '../blog/storage-factory.js';
 import { runBranchEntryPipeline, runDailySummaryPipeline, type NovelEngineConfig } from './engine.js';
 import type { BranchContext } from './branch-generator.js';
 import { loadNovelConfig, type NovelConfig } from './config.js';
@@ -84,11 +85,12 @@ async function main() {
       novelConfig.storyVoice = params['voice'] as NovelConfig['storyVoice'];
     }
 
+    const storageType = (params['storage'] ?? 'memory') as 'memory' | 'firestore';
     const config: NovelEngineConfig = {
       repoKey: repoKey as NovelEngineConfig['repoKey'],
       sessionId,
       branchName,
-      storage: new MemoryBlogStorage(),
+      storage: createStorage({ type: storageType }),
       novelConfig,
     };
 
@@ -141,11 +143,12 @@ async function main() {
       novelConfig.storyVoice = params['voice'] as NovelConfig['storyVoice'];
     }
 
+    const storageType = (params['storage'] ?? 'memory') as 'memory' | 'firestore';
     const config: NovelEngineConfig = {
       repoKey: repoKey as NovelEngineConfig['repoKey'],
       sessionId,
       branchName: 'daily-summary',
-      storage: new MemoryBlogStorage(),
+      storage: createStorage({ type: storageType }),
       novelConfig,
     };
 

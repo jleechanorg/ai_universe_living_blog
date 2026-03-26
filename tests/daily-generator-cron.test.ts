@@ -52,27 +52,27 @@ describe('shouldRunDailySummary', () => {
   it('returns true when 3 or more posts exist for the given date', async () => {
     const posts = [makePost(), makePost(), makePost()];
     const storage = makeMockStorage(posts);
-    const result = await shouldRunDailySummary(storage, TEST_DATE, TEST_REPO);
+    const result = await shouldRunDailySummary(storage, TEST_REPO, TEST_DATE);
     expect(result).toBe(true);
   });
 
   it('returns true when more than 3 posts exist for the given date', async () => {
     const posts = [makePost(), makePost(), makePost(), makePost(), makePost()];
     const storage = makeMockStorage(posts);
-    const result = await shouldRunDailySummary(storage, TEST_DATE, TEST_REPO);
+    const result = await shouldRunDailySummary(storage, TEST_REPO, TEST_DATE);
     expect(result).toBe(true);
   });
 
   it('returns false when fewer than 3 posts exist for the given date', async () => {
     const posts = [makePost(), makePost()];
     const storage = makeMockStorage(posts);
-    const result = await shouldRunDailySummary(storage, TEST_DATE, TEST_REPO);
+    const result = await shouldRunDailySummary(storage, TEST_REPO, TEST_DATE);
     expect(result).toBe(false);
   });
 
   it('returns false when zero posts exist for the given date', async () => {
     const storage = makeMockStorage([]);
-    const result = await shouldRunDailySummary(storage, TEST_DATE, TEST_REPO);
+    const result = await shouldRunDailySummary(storage, TEST_REPO, TEST_DATE);
     expect(result).toBe(false);
   });
 
@@ -83,7 +83,7 @@ describe('shouldRunDailySummary', () => {
       makePost({ createdAt: '2026-03-26T10:00:00.000Z' }),
     ];
     const storage = makeMockStorage(posts);
-    const result = await shouldRunDailySummary(storage, TEST_DATE, TEST_REPO);
+    const result = await shouldRunDailySummary(storage, TEST_REPO, TEST_DATE);
     expect(result).toBe(false);
   });
 
@@ -94,7 +94,30 @@ describe('shouldRunDailySummary', () => {
       makePost({ repoKey: 'other/repo' as RepoKey }),
     ];
     const storage = makeMockStorage(posts);
-    const result = await shouldRunDailySummary(storage, TEST_DATE, TEST_REPO);
+    const result = await shouldRunDailySummary(storage, TEST_REPO, TEST_DATE);
+    expect(result).toBe(false);
+  });
+
+  it('uses configurable minPosts threshold', async () => {
+    // With minPosts=2, 2 posts should return true
+    const posts = [makePost(), makePost()];
+    const storage = makeMockStorage(posts);
+    const result = await shouldRunDailySummary(storage, TEST_REPO, TEST_DATE, 2);
+    expect(result).toBe(true);
+  });
+
+  it('respects minPosts=1 with single post', async () => {
+    const posts = [makePost()];
+    const storage = makeMockStorage(posts);
+    const result = await shouldRunDailySummary(storage, TEST_REPO, TEST_DATE, 1);
+    expect(result).toBe(true);
+  });
+
+  it('returns false when posts equal but not exceed minPosts-1', async () => {
+    const posts = [makePost(), makePost()];
+    const storage = makeMockStorage(posts);
+    // minPosts=3 but only 2 posts
+    const result = await shouldRunDailySummary(storage, TEST_REPO, TEST_DATE, 3);
     expect(result).toBe(false);
   });
 });

@@ -272,23 +272,29 @@ function renderBeadTrackerMarkdown(beadIds: string[]): string {
 
 /**
  * Determine whether the daily summary pipeline should run for a given date.
- * Returns true if there are at least 3 posts for the given date and repo.
+ * Returns true if there are at least `minPosts` posts for the given date and repo.
  * Logs a warning and returns false when the threshold is not met.
+ *
+ * @param storage  BlogStorage instance
+ * @param repoKey  RepoKey to filter posts by repo
+ * @param date     Target date in YYYY-MM-DD format
+ * @param minPosts Minimum posts required (default: 3)
  */
 export async function shouldRunDailySummary(
   storage: BlogStorage,
-  date: string,
   repoKey: RepoKey,
+  date: string,
+  minPosts = 3,
 ): Promise<boolean> {
   const posts = await fetchDailyPosts(storage, repoKey, date);
-  if (posts.length >= 3) {
+  if (posts.length >= minPosts) {
     return true;
   }
   logger.warn('Daily summary skipped — below minimum post threshold', {
     date,
     repoKey,
     postCount: posts.length,
-    minRequired: 3,
+    minRequired: minPosts,
   });
   return false;
 }

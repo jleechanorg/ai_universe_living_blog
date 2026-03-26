@@ -81,7 +81,7 @@ describe('postEvent', () => {
     });
     await expect(
       postEvent({ type: 'pr_created', repo: 'owner/repo', pr: 1, session: 'ao-1' }, 'http://localhost:8081', mockFetch),
-    ).rejects.toThrow('schema validation failed');
+    ).rejects.toThrow('Blog post failed: schema validation failed');
   });
 
   it('throws when isError is true but content is empty', async () => {

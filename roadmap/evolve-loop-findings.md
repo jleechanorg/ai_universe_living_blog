@@ -385,3 +385,29 @@ Same manual operation (post @coderabbitai review) done 3+ times. Pattern recorde
 ### Harness note
 CR stall pattern: jleechan-3h1o. CR eventually responded — total stall duration ~2h55min.
 Bead remains open for implementing 60min fallback rule.
+
+---
+
+## 2026-03-26 20:22 cycle (PRs #9 + #10 MERGED, duplicate PRs closed)
+
+### Zero-touch rate: ↑↑ — PRs #9 and #10 both merged!
+
+### Living blog Phase 2 progress
+| PR | Feature | Status |
+|----|---------|--------|
+| #6 | daily-summary-cron | open |
+| #7 | firestore-storage | open |
+| #8 | ao-lifecycle-hooks | ✅ merged 18:26Z |
+| #9 | worker-poster | ✅ merged ~20:10Z |
+| #10 | install-smoke-test | ✅ merged ~20:15Z |
+| #12 | agent-harness-overlay | open (new, from jc-905) |
+
+### Friction: post-merge duplicate PRs
+jc-909 created PRs #11 and #13 ("address PR #9 review comments") AFTER PR #9 merged. Root cause: jc-909 looped after merge without checking PR state first. Closed both duplicates.
+
+### Bead: duplicate PR post-merge pattern
+Creates noise. Worker should check if PR was already merged before addressing review comments. Not bead-worthy yet (first occurrence).
+
+### Fixes
+- Closed PR #11 and #13 (duplicates) directly via REST
+- jc-905 at 6% context — will auto-compact; PR #12 (harness overlay) is its output

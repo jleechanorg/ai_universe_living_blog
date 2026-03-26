@@ -567,3 +567,22 @@ CR reviewed jc-905's push (2fa879c2) and posted new CHANGES_REQUESTED:
 ### Actions
 - Sent jc-905 CR fix details (storage-firestore.ts threadId immutability)
 - No new merges this cycle
+
+---
+
+## 2026-03-26 21:52 cycle
+
+### Zero-touch rate: 4/6 = 67% → unchanged
+
+### PR #7: jc-905 at 12% context — urgent action needed
+- jc-905 sleeping 300s for CI on 74fcea17589b (CI still in_progress)
+- Sent urgent fix message: fix threadId immutability BEFORE auto-compact
+- Risk: jc-905 auto-compacts before completing fix
+
+### PR #12: CR stall 2h+ since jc-910's push
+- Posted `@coderabbitai review` at 20:52 (3rd ping since fix push)
+- mergeable_state: unknown (transient)
+
+### Actions
+- Sent jc-905 urgent pre-compact fix task
+- Re-pinged CR on PR #12

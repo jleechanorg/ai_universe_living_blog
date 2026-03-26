@@ -85,21 +85,29 @@ export class FirestoreBlogStorage implements BlogStorage {
 
   async createPost(post: Post): Promise<Post> {
     PostSchema.parse(post); // fail fast on malformed posts before durable write
-    await this.postsCol.doc(post.id).set(post);
-    logger.debug('Firestore: Post created', { id: post.id });
-    // Refresh thread aggregates so postCount/latestPostAt stay accurate
-    if (post.threadId) {
-      try {
-        const posts = await this.getPostsByThread(post.threadId);
-        await this.threadsCol.doc(post.threadId).set({
-          postCount: posts.length,
-          latestPostAt: posts[posts.length - 1]?.createdAt ?? post.createdAt,
-        }, { merge: true });
-      } catch {
-        // Non-fatal: thread refresh should not block post creation
-        logger.debug('Firestore: Thread refresh skipped', { threadId: post.threadId });
+    // Wrap post write + thread-aggregate refresh in a transaction so concurrent
+    // post writes cannot clobber each other's postCount/latestPostAt.
+    await this.db.runTransaction(async (tx) => {
+      tx.set(this.postsCol.doc(post.id), post);
+      if (post.threadId) {
+        const snap = await tx.get(this.threadsCol.doc(post.threadId));
+        if (snap.exists) {
+          const posts = await tx.get(
+            this.postsCol.where('threadId', '==', post.threadId).orderBy('createdAt', 'asc'),
+          );
+          tx.set(
+            this.threadsCol.doc(post.threadId),
+            {
+              postCount: posts.size,
+              latestPostAt: posts.docs.at(-1)?.data().createdAt ?? post.createdAt,
+            },
+            { merge: true },
+          );
+        }
+        // Thread doesn't exist yet — skip refresh (non-fatal)
       }
-    }
+    });
+    logger.debug('Firestore: Post created', { id: post.id });
     return post;
   }
 
@@ -188,26 +196,32 @@ export class FirestoreBlogStorage implements BlogStorage {
   }
 
   async updateThread(id: string, updates: Partial<Thread>): Promise<Thread> {
-    const existing = await this.getThread(id);
-    if (!existing) throw new Error(`Thread not found: ${id}`);
-    if (updates.id !== undefined && updates.id !== existing.id) {
-      throw new Error('Updating thread id is not allowed');
-    }
-    if (updates.repoKey !== undefined && updates.repoKey !== existing.repoKey) {
-      throw new Error('Updating thread repoKey is not allowed');
-    }
-    // Recompute postCount and latestPostAt from actual posts so aggregates are never stale.
-    const posts = await this.getPostsByThread(id);
-    const updated: Thread = {
-      ...existing,
-      ...updates,
-      id: existing.id,
-      repoKey: existing.repoKey,
-      postCount: posts.length,
-      latestPostAt: posts[posts.length - 1]?.createdAt ?? existing.latestPostAt,
-    };
-    await this.threadsCol.doc(id).set(updated);
-    return updated;
+    let updated: Thread | undefined;
+    await this.db.runTransaction(async (tx) => {
+      const threadSnap = await tx.get(this.threadsCol.doc(id));
+      if (!threadSnap.exists) throw new Error(`Thread not found: ${id}`);
+      const existing = threadSnap.data() as Thread;
+      if (updates.id !== undefined && updates.id !== existing.id) {
+        throw new Error('Updating thread id is not allowed');
+      }
+      if (updates.repoKey !== undefined && updates.repoKey !== existing.repoKey) {
+        throw new Error('Updating thread repoKey is not allowed');
+      }
+      // Recompute postCount and latestPostAt from actual posts so aggregates are never stale.
+      const postsSnap = await tx.get(
+        this.postsCol.where('threadId', '==', id).orderBy('createdAt', 'asc'),
+      );
+      updated = {
+        ...existing,
+        ...updates,
+        id: existing.id,
+        repoKey: existing.repoKey,
+        postCount: postsSnap.size,
+        latestPostAt: postsSnap.docs.at(-1)?.data().createdAt ?? existing.latestPostAt,
+      };
+      tx.set(this.threadsCol.doc(id), updated);
+    });
+    return updated!;
   }
 
   async listThreads(params: ListThreadsParams): Promise<ListThreadsResult> {

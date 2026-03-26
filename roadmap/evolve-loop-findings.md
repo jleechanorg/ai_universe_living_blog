@@ -42,7 +42,40 @@
 
 ---
 
-## 2026-03-26 16:45 cycle
+## 2026-03-26 17:45 cycle
+
+### Zero-touch rate: 69% (20/29 merged — agent-orchestrator 76%, jleechanclaw 25%)
+
+### System state
+- Active sessions: 18 total (7 ao-*, 5 jc-new living blog, 3 jc-old, 2 cc-*, 1 wc-*)
+- Living blog workers: jc-905..909 all active (Firestore, install-test, ao-hooks, daily-cron, worker-poster)
+- agent-orchestrator open PRs: #202 (clean, CR CHANGES_REQUESTED, no worker), #206/#201 (unstable CI), #207 (no [agento] tag)
+
+### Friction points found
+
+1. **PR #202 unassigned** (agent-orchestrator, CR CHANGES_REQUESTED): No worker assigned. Lifecycle-worker should auto-pick up. Monitor next cycle.
+
+2. **ao-1016 stuck 1h+**: MCP mail registration error (`Agent 'claude' not registered globally`). Sitting on `session/ao-1016` branch, no PR, no progress. Not killing — lifecycle-worker should reap it.
+
+3. **lifecycle-worker running manually** (not via launchd): `ps aux` shows `node /Users/jleechan/bin/ao lifecycle-worker jleechanclaw` started outside launchd. Risk: dies silently on shell exit. Should be bootstrapped via launchd plist.
+
+4. **Zero-touch rate below target**: 69% vs expected 80%+. Root cause: 5 non-[agento] merged PRs were operator harness fixes (stuck-detector, doctor, evidence-gate, prose-polish, upstream-consolidation). These are legitimate operator PRs, not tagging gaps.
+
+### Beads created
+- None (no new gaps beyond existing roadmap — ao-1016 MCP mail issue is jleechan-v7oa equivalent)
+
+### Fixes dispatched
+- None new this cycle — living blog Phase 2 workers already running
+- lifecycle-worker bootstrap: deferred (running, just not via launchd — note for operator)
+
+### Living blog Phase 2 status
+- jc-905 (Firestore storage): working — reading code structure
+- jc-906 (install smoke test): working — created feat/install-smoke-test branch, writing TDD test
+- jc-907 (AO lifecycle hooks): working — reading plan
+- jc-908 (daily summary cron): ready — received task
+- jc-909 (worker poster): working — progressing
+
+---
 
 ### Zero-touch rate: 100% (1/1 — PR #2 merged zero-touch)
 

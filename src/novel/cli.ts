@@ -18,8 +18,8 @@
  *   --errors=a,b           Comma-separated error messages (optional)
  *   --voice=workers|agents|minimal   Story voice override (default: workers)
  *   --date=YYYY-MM-DD     Date for daily-summary (default: today)
+ *   --storage=memory|firestore  Storage backend (default: memory; env: STORAGE_TYPE)
  *   --config=<path>       Load config from JSON file (optional)
- *   --storage=memory|firestore   Storage backend (default: memory)
  */
 
 import { createStorage } from '../blog/storage-factory.js';
@@ -58,6 +58,11 @@ async function loadConfig(configPath?: string): Promise<NovelConfig> {
   return loadNovelConfig('./novel.config.json');
 }
 
+/** Resolve storage type: CLI flag → STORAGE_TYPE env var → 'memory' default. */
+function resolveStorageType(flagValue?: string): 'memory' | 'firestore' {
+  return (flagValue ?? process.env['STORAGE_TYPE'] ?? 'memory') as 'memory' | 'firestore';
+}
+
 async function main() {
   if (command === 'branch-entry') {
     const params = parseKvArgs(args.slice(1));
@@ -86,7 +91,7 @@ async function main() {
       novelConfig.storyVoice = params['voice'] as NovelConfig['storyVoice'];
     }
 
-    const storageType = (params['storage'] ?? process.env['STORAGE_TYPE'] ?? 'memory') as 'memory' | 'firestore';
+    const storageType = resolveStorageType(params['storage']);
     const config: NovelEngineConfig = {
       repoKey: repoKey as NovelEngineConfig['repoKey'],
       sessionId,
@@ -148,8 +153,7 @@ async function main() {
       novelConfig.storyVoice = params['voice'] as NovelConfig['storyVoice'];
     }
 
-    const storageType = (params['storage'] ?? process.env['STORAGE_TYPE'] ?? 'memory') as 'memory' | 'firestore';
-
+    const storageType = resolveStorageType(params['storage']);
     const config: NovelEngineConfig = {
       repoKey: repoKey as NovelEngineConfig['repoKey'],
       sessionId,
@@ -181,6 +185,7 @@ Commands:
   branch-entry --repo=owner/repo --session=ID --branch=name [--pr=N] [--sha=SHA] [--errors=a,b]
     Generate and post a per-branch novel entry to the blog.
     Uses --voice to override the story persona (workers | agents | minimal).
+    Uses --storage to select storage backend (memory | firestore).
 
   daily-summary --repo=owner/repo --session=ID [--date=YYYY-MM-DD]
     Generate and post the daily community novel summary.
@@ -199,16 +204,13 @@ Options:
   --errors=a,b          Comma-separated error messages
   --voice=V             Story voice: workers | agents | minimal (default: workers)
   --date=YYYY-MM-DD     Target date for daily summary (default: today)
+  --storage=V           Storage backend: memory | firestore (default: memory; env: STORAGE_TYPE)
   --config=<path>       Load config from a JSON file (see docs/CONFIGURATION.md)
 
-Configuration file example (novel.config.json):
-{
-  "defaultRepoKey": "myorg/my-repo",
-  "storyVoice": "agents",
-  "baseDate": "2026-04-01",
-  "targetDailySummaryWords": 1200,
-  "minPostsForDailySummary": 2
-}
+Environment variables for Firestore storage:
+  STORAGE_TYPE=firestore
+  FIRESTORE_PROJECT_ID=your-gcp-project
+  FIRESTORE_COLLECTION=posts
 `);
     return;
   }

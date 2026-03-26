@@ -209,6 +209,25 @@ install_npm_dep() {
       if [[ -n "${CREATED_PLACEHOLDER}" ]]; then
         warn "No package.json existed — skipping npm install (add dependencies to ${TARGET}/package.json)"
         warn "Run manually: npm install"
+      elif [[ -n "${SOURCE_DIR}" ]]; then
+        # Use local source — add as file: dependency so the local build is used.
+        # This bypasses the registry install that would overwrite the local copy.
+        if command -v jq &>/dev/null; then
+          local tmp
+          tmp=$(mktemp)
+          if jq --arg dep "file:./node_modules/ai-universe-living-blog" \
+             '.dependencies["ai-universe-living-blog"] = $dep' \
+             "${TARGET}/package.json" > "${tmp}"; then
+            mv "${tmp}" "${TARGET}/package.json"
+            log "Added ai-universe-living-blog as file: dependency (local source)"
+          else
+            rm -f "${tmp}"
+            warn "Could not update package.json — add manually: \"ai-universe-living-blog\": \"file:./node_modules/ai-universe-living-blog\""
+          fi
+        else
+          warn "jq not available — add manually to ${TARGET}/package.json:"
+          warn "  \"dependencies\": { \"ai-universe-living-blog\": \"file:./node_modules/ai-universe-living-blog\" }"
+        fi
       elif ! (cd "${TARGET}" && npm install --save ai-universe-living-blog@latest 2>/dev/null); then
         # Fallback: add as a file: dependency pointing to the copied node_modules path
         warn "npm install failed — adding as file: dependency..."

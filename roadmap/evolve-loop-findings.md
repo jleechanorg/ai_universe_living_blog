@@ -234,3 +234,24 @@ Bead created: jleechan-eup3
 
 ### Fixes dispatched
 - ao send jc-906: resume install smoke test + L4 evidence after auto-compact
+
+---
+
+## 2026-03-26 19:02 cycle (5 PRs open, PR #8 unblocked)
+
+### Zero-touch rate: 69% → watching for PR #8 merge
+
+### System state
+- PRs: 5 open (#6-10), no new merges
+  - PR #10 new: `[P1] test(install): add install.sh smoke test` (jc-906 created earlier)
+  - PR #8: CI=success ✅, CR APPROVED ✅, but jc-907 stuck on reviewDecision:null
+- Workers: jc-908 at 11% (auto-compact imminent), jc-909 at 4% (queued msg triggered)
+- GraphQL: 3918 (recovered after reset)
+
+### Friction
+1. **jc-907 polling loop**: `reviewDecision: null` interpreted as blocked. Clarified via ao send: null is expected for this repo, proceed with merge if 6-green.
+2. **jc-906 uncommitted changes**: post-auto-compact work on feat/jleechan-ugm0 but PR #10 is on feat/install-smoke-test. Sent commit+switch instructions.
+
+### Fixes dispatched
+- ao send jc-907: clarify reviewDecision:null, proceed to merge PR #8 if 6-green
+- ao send jc-906: commit uncommitted changes to feat/install-smoke-test, update PR #10

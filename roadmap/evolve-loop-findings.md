@@ -133,3 +133,28 @@
 - Total open: 3/5 tasks have PRs
 
 ### Friction: none new
+
+---
+
+## 2026-03-26 18:20 — /nextsteps assessment
+
+### Ryan transcript proof standard applied
+Per OpenAI Ryan talk: PRs must have visual proof (screenshots + screen recording) showing the feature actually works end-to-end, not just passing tests.
+
+### All 5 Phase 2 PRs now open
+- PR #6: feat/daily-summary-cron (jc-908) — shouldRunDailySummary + GH Actions cron
+- PR #7: feat/firestore-storage (jc-905) — FirestoreBlogStorage, 47 tests
+- PR #8: feat/ao-lifecycle-hooks (jc-907) — handlePrEvent(), 8 tests, GH Actions
+- PR #9: feat/worker-poster (jc-909) — postEvent(), 38 tests
+- PR #5 equivalent: feat/install-smoke-test (jc-906) — in progress
+
+### Critical gap: L4 visual evidence missing from all PRs
+None of PRs #6-9 have:
+- Screenshots of MCP server running + /health endpoint response
+- Screenshots of MCP tool calls (create_post, list_posts) working
+- Screen recording of end-to-end flow (start → health → create_post → list_posts)
+
+This is the "proof a real app is being built" standard per Ryan's talk.
+
+### Action: Dispatch L4 evidence workers for each open PR
+Bead created: jleechan-eup3

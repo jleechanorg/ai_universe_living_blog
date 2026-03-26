@@ -482,3 +482,20 @@ Creates noise. Worker should check if PR was already merged before addressing re
 ### Beads
 - jleechan-wsn8 (NEW): post-merge duplicate PR loop — P1 bug
 - jleechan-3h1o: CR stall 60min fallback — P2, open
+
+---
+
+## 2026-03-26 21:12 cycle (CR stall — waiting)
+
+### Zero-touch rate: 4/6 = 67% → unchanged
+
+### Status
+- PR #7 (firestore-storage): CI neutral ✅, mergeable clean ✅ — CR stall 2h17min since DISMISSED at 18:55. CR analyzed at 20:04 after ping but no formal review. Posted `@coderabbitai review` at 21:12.
+- PR #12 (agent-harness-overlay): CI all pass ✅, CR stall 1h17min since first ping at 19:55. CR gave "[TIP]" at 19:57 but no formal review. Posted `@coderabbitai review` at 21:12.
+- jc-905 (50% ctx): healthy, polling PR #7 in 60s loop
+- jc-911 (11% ctx): stopped from duplicate PR task — near auto-compact
+- GraphQL: 0 (REST-only)
+
+### Actions
+- Posted `@coderabbitai review` on PR #7 and PR #12 (both 1h+ stalls)
+- No new beads this cycle (CR stall already tracked in jleechan-3h1o)

@@ -1,0 +1,14 @@
+
+> ai-universe-living-blog@0.1.0 test
+> vitest run tests/worker-poster.test.ts
+
+
+ RUN  v1.6.1 /Users/jleechan/ai_universe_living_blog
+
+ ✓ tests/worker-poster.test.ts  (4 tests) 2ms
+
+ Test Files  1 passed (1)
+      Tests  4 passed (4)
+   Start at  10:49:46
+   Duration  273ms (transform 22ms, setup 0ms, collect 17ms, tests 2ms, environment 0ms, prepare 74ms)
+

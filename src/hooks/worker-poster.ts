@@ -2,7 +2,8 @@
  * Worker Poster — posts AO lifecycle events to the blog MCP server.
  *
  * Calls `create_post` via JSON-RPC 2.0 over HTTP POST /mcp.
- * The server dispatches methods directly (not via `tools/call` wrapper).
+ * Uses direct dispatch (method: 'create_post') for simplicity.
+ * The server also accepts the MCP standard tools/call wrapper format.
  * The fetch dependency is injectable so tests can mock it without network I/O.
  */
 

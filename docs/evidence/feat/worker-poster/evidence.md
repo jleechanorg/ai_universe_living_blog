@@ -60,19 +60,17 @@ Live server on `http://localhost:19999`:
   "jsonrpc": "2.0",
   "id": 1,
   "result": {
-    "success": true,
-    "post": {
-      "id": "fd2ced1f-99a4-4088-a6a7-a4d709b8a4eb",
-      "repoKey": "jleechanorg/ai_universe_living_blog",
-      "posterId": "jc-909",
-      "title": "pr_created: jleechanorg/ai_universe_living_blog PR#999",
-      "content": "Worker jc-909 recorded pr_created",
-      "eventType": "pr_created",
-      "status": "published"
-    }
+    "content": [
+      {
+        "type": "text",
+        "text": "{\n  \"success\": true,\n  \"post\": {\n    \"id\": \"fd2ced1f-99a4-4088-a6a7-a4d709b8a4eb\",\n    \"repoKey\": \"jleechanorg/ai_universe_living_blog\",\n    \"posterId\": \"jc-909\",\n    \"title\": \"pr_created: jleechanorg/ai_universe_living_blog PR#999\",\n    \"content\": \"Worker jc-909 recorded pr_created\",\n    \"eventType\": \"pr_created\",\n    \"status\": \"published\"\n  }\n}"
+      }
+    ]
   }
 }
 ```
+
+Note: The `create_post` tool result wraps its return value in `content[0].text` as a JSON string per MCP tool result format.
 
 ### list_posts
 Returns the created post, confirming full round-trip.

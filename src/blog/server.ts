@@ -104,7 +104,13 @@ export async function createBlogApp(): Promise<ReturnType<typeof express>> {
       if (typeof name !== 'string') {
         return res.json({
           jsonrpc: '2.0', id,
-          error: { code: -32602, message: 'Invalid params — tools/call requires { name: string, arguments: object }' },
+          error: { code: -32602, message: 'Invalid params — tools/call requires { name: string, arguments?: object }' },
+        });
+      }
+      if (args !== undefined && (typeof args !== 'object' || args === null || Array.isArray(args))) {
+        return res.json({
+          jsonrpc: '2.0', id,
+          error: { code: -32602, message: 'Invalid params — tools/call arguments must be an object if provided' },
         });
       }
       toolName = name;

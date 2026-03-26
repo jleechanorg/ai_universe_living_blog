@@ -1,0 +1,40 @@
+name: Daily Novel Summary
+
+on:
+  schedule:
+    - cron: '30 23 * * *'
+  workflow_dispatch:
+    inputs:
+      date:
+        description: 'Date (YYYY-MM-DD)'
+        default: ''
+        required: false
+
+jobs:
+  daily-summary:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run daily summary
+        run: |
+          DATE_ARG=""
+          if [ -n "${{ inputs.date }}" ]; then
+            DATE_ARG="--date=${{ inputs.date }}"
+          fi
+          npm run dev:novel -- daily-summary \
+            --repo=jleechanorg/ai_universe_living_blog \
+            --session=daily-${{ github.run_id }} \
+            $DATE_ARG
+        env:
+          NODE_ENV: production

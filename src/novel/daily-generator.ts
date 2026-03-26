@@ -23,6 +23,7 @@
 import { pickDailySummaryBeads } from './beads.js';
 import type { RepoKey, Post } from '../shared/types.js';
 import type { BlogStorage } from '../shared/types.js';
+import { logger } from '../shared/logger.js';
 
 export interface DailySummaryContext {
   repoKey: RepoKey;
@@ -272,6 +273,29 @@ function renderBeadTrackerMarkdown(beadIds: string[]): string {
 /**
  * Fetch all posts for a given date from storage.
  */
+/**
+ * Determine whether the daily summary pipeline should run for a given date.
+ * Returns true if there are at least 3 posts for the given date and repo.
+ * Logs a warning and returns false when the threshold is not met.
+ */
+export async function shouldRunDailySummary(
+  storage: BlogStorage,
+  date: string,
+  repoKey: RepoKey,
+): Promise<boolean> {
+  const posts = await fetchDailyPosts(storage, repoKey, date);
+  if (posts.length >= 3) {
+    return true;
+  }
+  logger.warn('Daily summary skipped — below minimum post threshold', {
+    date,
+    repoKey,
+    postCount: posts.length,
+    minRequired: 3,
+  });
+  return false;
+}
+
 export async function fetchDailyPosts(storage: BlogStorage, repoKey: RepoKey, date: string): Promise<Post[]> {
   // Paginate through the full repo history so no posts are dropped from older days.
   const allPosts: Post[] = [];

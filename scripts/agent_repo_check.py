@@ -33,7 +33,9 @@ def parse_frontmatter(text: str) -> dict[str, str]:
     """Parse YAML frontmatter from markdown text. Returns {} if no frontmatter."""
     if not text.startswith("---"):
         return {}
-    end = text.index("---", 3)
+    end = text.find("---", 3)
+    if end == -1:
+        return {}
     fm_text = text[4:end]
     result = {}
     for line in fm_text.splitlines():

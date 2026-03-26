@@ -19,7 +19,7 @@ Start here for any task. Read only the docs relevant to your goal.
 npm test && python3 scripts/agent_repo_check.py
 ```
 
-**This repo uses a CLAUDE.md alias.** `CLAUDE.md` symlinks to this file.
+**This repo uses an AGENTS.md agent instructions file** — agents should read this as the primary instructions alongside `CLAUDE.md`.
 <!-- agent-harness:end -->
 
 ---

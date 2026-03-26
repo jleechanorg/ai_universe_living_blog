@@ -95,15 +95,45 @@ export const DEFAULT_NOVEL_CONFIG: NovelConfig = {
 /**
  * Load a novel config from a JSON file.
  * Returns DEFAULT_NOVEL_CONFIG if the file does not exist.
+ * Throws if the file exists but contains invalid JSON or a bad storyVoice.
  */
 export async function loadNovelConfig(path: string): Promise<NovelConfig> {
   try {
     const { readFile } = await import('fs/promises');
     const content = await readFile(path, 'utf-8');
     const parsed = JSON.parse(content) as Partial<NovelConfig>;
-    return { ...DEFAULT_NOVEL_CONFIG, ...parsed };
-  } catch {
-    return DEFAULT_NOVEL_CONFIG;
+    const merged = { ...DEFAULT_NOVEL_CONFIG, ...parsed };
+    // Validate storyVoice to catch config mistakes early
+    if (!['workers', 'agents', 'minimal'].includes(merged.storyVoice)) {
+      throw new Error(`Invalid storyVoice in ${path}: "${merged.storyVoice}" — must be workers | agents | minimal`);
+    }
+    // Validate baseDate
+    const baseDateParsed = new Date(merged.baseDate);
+    if (Number.isNaN(baseDateParsed.getTime())) {
+      throw new Error(`Invalid baseDate in ${path}: "${merged.baseDate}" — must be YYYY-MM-DD`);
+    }
+    // Validate word targets
+    if (typeof merged.minDailySummaryWords !== 'number' || merged.minDailySummaryWords < 0) {
+      throw new Error(`Invalid minDailySummaryWords in ${path}: must be a non-negative number`);
+    }
+    if (typeof merged.targetDailySummaryWords !== 'number' || merged.targetDailySummaryWords < merged.minDailySummaryWords) {
+      throw new Error(`Invalid targetDailySummaryWords in ${path}: must be >= minDailySummaryWords`);
+    }
+    if (typeof merged.targetBranchEntryWords !== 'number' || merged.targetBranchEntryWords < 0) {
+      throw new Error(`Invalid targetBranchEntryWords in ${path}: must be a non-negative number`);
+    }
+    if (typeof merged.minPostsForDailySummary !== 'number' || !Number.isInteger(merged.minPostsForDailySummary) || merged.minPostsForDailySummary < 0) {
+      throw new Error(`Invalid minPostsForDailySummary in ${path}: must be a non-negative integer`);
+    }
+    if (!Array.isArray(merged.alwaysIncludeBeads)) {
+      throw new Error(`Invalid alwaysIncludeBeads in ${path}: must be an array of bead IDs`);
+    }
+    return merged;
+  } catch (err) {
+    if (typeof err === 'object' && err && 'code' in err && (err as { code?: string }).code === 'ENOENT') {
+      return DEFAULT_NOVEL_CONFIG;
+    }
+    throw err;
   }
 }
 

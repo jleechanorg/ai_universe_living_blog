@@ -9,11 +9,14 @@ export const RepoKeySchema = z.string().regex(/^[^/]+\/[^/]+$/, '"owner/name" fo
 export type RepoKey = z.infer<typeof RepoKeySchema>;
 
 export function encodeRepoKey(repoKey: RepoKey): string {
-  return repoKey.replace('/', '__');
+  // Use encodeURIComponent for a reversible, collision-free encoding.
+  // encodeURIComponent('owner/repo') → 'owner%2Frepo'
+  // decodeURIComponent('owner%2Frepo') → 'owner/repo'
+  return encodeURIComponent(repoKey);
 }
 
 export function decodeRepoKey(encoded: string): RepoKey {
-  return encoded.replace('__', '/') as RepoKey;
+  return RepoKeySchema.parse(decodeURIComponent(encoded));
 }
 
 // ─── Poster ───────────────────────────────────────────────────────────────────
@@ -59,6 +62,8 @@ export const PostEventTypeSchema = z.enum([
 export type PostEventType = z.infer<typeof PostEventTypeSchema>;
 
 export const PostMetadataSchema = z.object({
+  dayNumber: z.number().int().positive().optional(),
+  postCount: z.number().int().nonnegative().optional(),
   prNumber: z.number().int().positive().optional(),
   prUrl: z.string().url().optional(),
   commitSha: z.string().regex(/^[0-9a-f]{7,40}$/).optional(),

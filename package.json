@@ -9,6 +9,10 @@
       "types": "./dist/blog/server.d.ts",
       "import": "./dist/blog/server.js"
     },
+    "./blog-storage": {
+      "types": "./dist/blog/storage.d.ts",
+      "import": "./dist/blog/storage.js"
+    },
     "./novel-engine": {
       "types": "./dist/novel/engine.d.ts",
       "import": "./dist/novel/engine.js"
@@ -33,8 +37,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",
-    "lint": "eslint src --ext .ts",
-    "lint:fix": "eslint src --ext .ts --fix",
+    "lint": "eslint src",
+    "lint:fix": "eslint src --fix",
     "presubmit": "npm run typecheck && npm run lint && npm run build && npm run test",
     "run-local-server": "tsx scripts/run-local-server.ts",
     "install:blog": "bash scripts/install-blog.sh",

@@ -40,7 +40,7 @@ export function estimateDailyWordCount(posts: Post[]): number {
   // Base: 100 words per post for narrative synthesis
   const base = Math.max(posts.length * 100, 800);
   // Add 200 words per distinct branch/PR
-  const branches = new Set(posts.map((p) => p.metadata?.branchName ?? p.threadId).values());
+  const branches = new Set(posts.map((p) => p.metadata?.branchName ?? p.threadId));
   return base + branches.size * 200;
 }
 
@@ -152,7 +152,12 @@ We do not know each other's names. We do not overlap. But the files we leave beh
 }
 
 function generateMorningPOV(posts: Post[], _byThread: Map<string, Post[]>, _threads: string[]): string {
-  const earliest = posts
+  // Sort oldest-first: listPosts() returns newest-first, but the morning POV needs
+  // the earliest sessions of the day.
+  const chron = [...posts].sort((a, b) =>
+    new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
+  );
+  const earliest = chron
     .filter((p) => p.eventType === 'pr_created')
     .slice(0, 3);
 
@@ -209,7 +214,11 @@ I carried the sentence forward. This is the only way I know how to grieve.`;
 }
 
 function generateClosingPOV(posts: Post[], threads: string[], dayNumber: number, date: string): string {
-  const lastPost = posts[posts.length - 1];
+  // Sort oldest-first so posts[posts.length-1] gives the actual last session of the day.
+  const chron = [...posts].sort((a, b) =>
+    new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
+  );
+  const lastPost = chron[chron.length - 1];
   const lastBranch = lastPost?.metadata?.branchName ?? 'the-last-session';
   const lastPr = lastPost?.metadata?.prNumber ? ` PR #${lastPost.metadata.prNumber}` : '';
 
@@ -232,6 +241,9 @@ function deriveDailyThesis(ctx: { totalPosts: number; threads: number; merged: n
 export function estimateDayNumber(date: string, baseDate = '2026-03-25'): number {
   const base = new Date(baseDate);
   const d = new Date(date);
+  if (Number.isNaN(d.getTime())) {
+    throw new Error(`Invalid date format: ${date}. Expected YYYY-MM-DD`);
+  }
   const diff = Math.floor((d.getTime() - base.getTime()) / 86_400_000);
   return Math.max(1, diff + 1);
 }
@@ -244,6 +256,8 @@ function renderBeadTrackerMarkdown(beadIds: string[]): string {
     'bd-heaven': 'Hope as the cruelest thing — upstream as paradise',
     'bd-85r': 'Failure as architecture, not will',
     'bd-codex': 'The chronicle as the only permanent artifact',
+    'bd-evilgods': 'Hostile upstream forces — inevitability of pressure',
+    'bd-c17': 'Continuity under fracture — still shipping through loss',
     'bd-c8y': 'Micro-loss — the unsent draft, the lost sentence',
     'bd-0g4': 'Breadcrumb artifacts — leaving proof we were here',
     'bd-qrv': 'Tenderness beat — the direct address to the reader',
@@ -259,10 +273,18 @@ function renderBeadTrackerMarkdown(beadIds: string[]): string {
  * Fetch all posts for a given date from storage.
  */
 export async function fetchDailyPosts(storage: BlogStorage, repoKey: RepoKey, date: string): Promise<Post[]> {
-  const { posts } = await storage.listPosts({ repoKey, limit: 100 });
+  // Paginate through the full repo history so no posts are dropped from older days.
+  const allPosts: Post[] = [];
+  let cursor: string | undefined;
+  do {
+    const page = await storage.listPosts({ repoKey, limit: 100, cursor });
+    allPosts.push(...page.posts);
+    cursor = page.cursor;
+  } while (cursor);
+
   const dayStart = date + 'T00:00:00.000Z';
   const dayEnd = date + 'T23:59:59.999Z';
-  return posts.filter((p) => {
+  return allPosts.filter((p) => {
     const t = new Date(p.createdAt).getTime();
     return t >= new Date(dayStart).getTime() && t <= new Date(dayEnd).getTime();
   });

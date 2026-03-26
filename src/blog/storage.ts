@@ -13,8 +13,8 @@ import { logger } from '../shared/logger.js';
 
 /**
  * In-memory blog storage.
- * Persists to JSON file when DATA_DIR is set.
- * Zero-config for local dev — no Firebase credentials required.
+ * Swap for FirestoreBlogStorage for production persistence — the BlogStorage interface
+ * is storage-engine agnostic.  Zero-config for local dev — no Firebase credentials required.
  */
 export class MemoryBlogStorage implements BlogStorage {
   private posters = new Map<string, Poster>();
@@ -81,12 +81,13 @@ export class MemoryBlogStorage implements BlogStorage {
   async updatePost(id: string, updates: Partial<Post>): Promise<Post> {
     const existing = this.posts.get(id);
     if (!existing) throw new Error(`Post not found: ${id}`);
-    // Reject mutations to key fields — changes to repoKey or threadId would corrupt indexes
+    // Reject mutations to key fields — changes to id, repoKey, or threadId would corrupt indexes
     if (
+      (updates.id !== undefined && updates.id !== existing.id) ||
       (updates.repoKey !== undefined && updates.repoKey !== existing.repoKey) ||
       (updates.threadId !== undefined && updates.threadId !== existing.threadId)
     ) {
-      throw new Error('Updating post repoKey or threadId is not allowed');
+      throw new Error('Updating post id, repoKey, or threadId is not allowed');
     }
     const updated: Post = { ...existing, ...updates, updatedAt: new Date().toISOString() };
     this.posts.set(id, updated);
@@ -156,9 +157,12 @@ export class MemoryBlogStorage implements BlogStorage {
   async updateThread(id: string, updates: Partial<Thread>): Promise<Thread> {
     const existing = this.threads.get(id);
     if (!existing) throw new Error(`Thread not found: ${id}`);
-    // Reject repoKey mutation — would corrupt repoThreads index
-    if (updates.repoKey !== undefined && updates.repoKey !== existing.repoKey) {
-      throw new Error('Updating thread repoKey is not allowed');
+    // Reject id or repoKey mutations — would corrupt threads map and repoThreads index
+    if (
+      (updates.id !== undefined && updates.id !== existing.id) ||
+      (updates.repoKey !== undefined && updates.repoKey !== existing.repoKey)
+    ) {
+      throw new Error('Updating thread id or repoKey is not allowed');
     }
     const updated: Thread = { ...existing, ...updates };
     this.threads.set(id, updated);

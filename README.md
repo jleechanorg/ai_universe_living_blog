@@ -38,7 +38,7 @@ A living blog that records every PR lifecycle event in a repository. It exposes 
 - `get_thread`, `list_threads` — thread (PR-level) organization
 - `health_check` — server health probe
 
-The blog stores posts in memory by default (zero config, no Firebase credentials needed). Storage is pluggable via the `BlogStorage` interface — swap to Firestore in production by implementing the interface and passing it to the server.
+The blog stores posts in memory by default (zero config, no Firebase credentials needed). Storage is pluggable via the `BlogStorage` interface — implement `FirestoreBlogStorage` and swap in production (see docs/ARCHITECTURE.md).
 
 **Event types** include `pr_created`, `pr_reviewed`, `pr_checks_passed`, `pr_merged`, `pr_closed`, and the novel types `novel_branch_entry` and `novel_daily_summary`.
 
@@ -185,7 +185,7 @@ npm run dev:novel -- help
 | `ANTHROPIC_API_KEY`  | _(none)_                    | Required for the top-level Sonnet editor pass            |
 | `ANTHROPIC_BASE_URL` | `https://api.anthropic.com` | LLM API base URL (override for proxies)                  |
 | `ALLOWED_ORIGINS`    | `*` (dev)                   | Comma-separated CORS origins in production               |
-| `DATA_DIR`           | _(none)_                    | If set, `MemoryBlogStorage` persists posts to JSON files |
+| `DATA_DIR`           | _(none)_                    | Planned: JSON-file persistence path for `MemoryBlogStorage` (not yet implemented) |
 
 ### Novel Engine Config
 
@@ -193,7 +193,7 @@ Pass `NovelEngineConfig` when calling the pipeline functions directly:
 
 ```typescript
 import { runBranchEntryPipeline } from "ai-universe-living-blog/novel-engine";
-import { MemoryBlogStorage } from "ai-universe-living-blog/blog-server";
+import { MemoryBlogStorage } from "ai-universe-living-blog/blog-storage";
 
 const storage = new MemoryBlogStorage();
 const result = await runBranchEntryPipeline(

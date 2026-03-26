@@ -21,20 +21,23 @@ import { logger } from '../shared/logger.js';
 // ─── Config ───────────────────────────────────────────────────────────────────
 
 const AGENT_ID = process.env['AGENT_ID'] ?? 'blog-mcp-server';
-const PORT = parseInt(process.env['PORT'] ?? '8081', 10);
+
+// Lazily resolves PORT so module import doesn't crash on invalid PORT.
+// Validation runs when the server is actually started, not at import time.
+const getPort = () => {
+  const raw = process.env['PORT'] ?? '8081';
+  const n = Number(raw);
+  if (!Number.isInteger(n) || n < 1 || n > 65535) {
+    throw new Error(`Invalid PORT: ${raw} — must be an integer between 1 and 65535`);
+  }
+  return n;
+};
 const NODE_ENV = process.env['NODE_ENV'] ?? 'development';
-const rawOrigins = process.env['ALLOWED_ORIGINS']
+const ALLOWED_ORIGINS = process.env['ALLOWED_ORIGINS']
   ?.split(',').map((o) => o.trim()).filter(Boolean)
   ?? (NODE_ENV === 'production'
     ? ['https://ai-universe-2025.web.app', 'https://ai-universe-2025.firebaseapp.com']
-    : null);
-
-// In development (no explicit ALLOWED_ORIGINS), use origin: true so any browser request
-// is allowed. In production, pass the explicit origin array — note that passing ['*']
-// to cors() treats '*' as a literal string, so we use origin: true for dev.
-const corsOptions = rawOrigins === null
-  ? { origin: true }
-  : { origin: rawOrigins };
+    : true); // true = reflect request origin in dev
 
 // ─── Express app factory ───────────────────────────────────────────────────────
 
@@ -44,7 +47,7 @@ export async function createBlogApp(): Promise<ReturnType<typeof express>> {
   const tools = createBlogToolHandlers(ctx);
 
   const app = express();
-  app.use(cors(corsOptions));
+  app.use(cors({ origin: ALLOWED_ORIGINS }));
   app.use(express.json({ limit: '10mb' }));
 
   // Health
@@ -118,15 +121,24 @@ export async function createBlogApp(): Promise<ReturnType<typeof express>> {
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
 async function main() {
-  logger.info('Starting Blog MCP server', { PORT, NODE_ENV, AGENT_ID });
+  logger.info('Starting Blog MCP server', { PORT: getPort(), NODE_ENV, AGENT_ID });
 
   const app = await createBlogApp();
   const server = http.createServer(app);
 
-  server.listen(PORT, () => {
-    logger.info(`Blog MCP server running on port ${PORT}`);
-    logger.info(`Health: http://localhost:${PORT}/health`);
-    logger.info(`MCP:    http://localhost:${PORT}/mcp`);
+  server.on('error', (err: Error & { code?: string }) => {
+    if (err.code === 'EADDRINUSE') {
+      logger.error(`Port ${getPort()} is already in use — kill the process or set PORT env var`);
+    } else {
+      logger.error('Blog MCP server failed to start', { err: String(err) });
+    }
+    process.exit(1);
+  });
+
+  server.listen(getPort(), () => {
+    logger.info(`Blog MCP server running on port ${getPort()}`);
+    logger.info(`Health: http://localhost:${getPort()}/health`);
+    logger.info(`MCP:    http://localhost:${getPort()}/mcp`);
   });
 
   for (const sig of ['SIGINT', 'SIGTERM'] as const) {

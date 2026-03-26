@@ -26,7 +26,7 @@ ALLOWED_ORIGINS=https://your-app.firebaseapp.com,https://your-app.web.app
 | `ANTHROPIC_API_KEY`  | _(none)_                            | For editor pass | API key for the top-level Sonnet editor rewrite                            |
 | `ANTHROPIC_BASE_URL` | `https://api.anthropic.com`         | No              | Base URL for the editor LLM (override for proxies or custom endpoints)     |
 | `ALLOWED_ORIGINS`    | `*` (dev) / Firebase domains (prod) | No              | Comma-separated list of allowed CORS origins                               |
-| `DATA_DIR`           | _(none)_                            | No              | If set, `MemoryBlogStorage` persists posts to JSON files in this directory |
+| `DATA_DIR`           | _(none)_                            | No              | Planned: JSON-file persistence path for `MemoryBlogStorage` (not yet implemented) |
 
 ### NODE_ENV and CORS
 
@@ -37,15 +37,9 @@ In `development` mode, the server accepts requests from any origin (`*`). In `pr
 ALLOWED_ORIGINS=https://app.example.com,https://staging.example.com NODE_ENV=production node dist/blog/server.js
 ```
 
-### DATA_DIR for JSON Persistence
+### DATA_DIR for JSON Persistence (planned)
 
-`MemoryBlogStorage` operates entirely in-memory by default. To persist posts to disk (useful for local development without a database):
-
-```bash
-DATA_DIR=/tmp/ai-universe-blog-data npm run dev:blog
-```
-
-Posts will be written as JSON files in that directory. This is not recommended for production — use a `BlogStorage` implementation backed by a real database.
+`MemoryBlogStorage` operates entirely in-memory by default. JSON-file persistence via `DATA_DIR` is planned — see `docs/ARCHITECTURE.md` for the swap-to-Firestore path when production persistence is needed.
 
 ---
 
@@ -55,7 +49,7 @@ When calling `runBranchEntryPipeline()` or `runDailySummaryPipeline()` directly 
 
 ```typescript
 import { runBranchEntryPipeline } from "ai-universe-living-blog/novel-engine";
-import { MemoryBlogStorage } from "ai-universe-living-blog/blog-server";
+import { MemoryBlogStorage } from "ai-universe-living-blog/blog-storage";
 import type { BranchContext } from "ai-universe-living-blog/novel-engine";
 
 const storage = new MemoryBlogStorage();
@@ -228,15 +222,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        with:
-          sparse-checkout: |
-            node_modules
-            dist
-            package.json
-          sparse-checkout-cone-mode: false
       - run: npm ci
+      - run: npm run build
       - run: |
-          npm run dev:novel -- daily-summary \
+          node dist/novel/cli.js daily-summary \
             --repo=${{ github.repository }} \
             --session=gh-actions-daily \
             --date=$(date +%Y-%m-%d)
@@ -326,7 +315,14 @@ const result = (await response.json()) as {
 1. **Install the module** into your repo:
 
    ```bash
-   curl -sSL https://raw.githubusercontent.com/jleechanorg/ai_universe_living_blog/main/install.sh | bash
+   # Download the installer to disk first (never pipe directly to bash)
+   curl -fsSL https://raw.githubusercontent.com/jleechanorg/ai_universe_living_blog/main/install.sh -o install.sh
+
+   # Inspect the script before running
+   cat install.sh
+
+   # Run it
+   bash install.sh
    ```
 
 2. **Start the blog server** (in a background terminal or via a process manager):

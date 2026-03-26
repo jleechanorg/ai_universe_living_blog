@@ -2,10 +2,9 @@
 #
 # install-novel.sh — Install the novel engine into any repository
 #
-# Clones ai_universe_living_blog to a temp directory, builds the TypeScript,
-# then copies the compiled dist/ output to the target repo's
-# node_modules/ai-universe-living-blog/. This avoids touching the target's
-# src/ or overwriting its package.json.
+# This is a standalone install script. It clones ai_universe_living_blog to a
+# temp directory, copies src/novel and src/shared TypeScript source into the
+# target repo, then runs npm install && npm run build there.
 #
 # Usage:
 #   bash scripts/install-novel.sh --target=/path/to/your/repo
@@ -32,12 +31,23 @@ TARGET="${TARGET:-$(pwd)}"
 INSTALL_ID="ai-universe-living-blog-novel-$$"
 TEMP_DIR="/tmp/${INSTALL_ID}"
 
+# Register cleanup trap early so TEMP_DIR is cleaned up even on early failures.
+trap cleanup EXIT
+
 REPO_URL="https://github.com/jleechanorg/ai_universe_living_blog.git"
 REPO_DIR="${TEMP_DIR}/repo"
 
 log()  { echo "[install-novel] $1"; }
 warn() { echo "[install-novel] WARNING: $1" >&2; }
 die()  { echo "[install-novel] ERROR: $1" >&2; exit 1; }
+
+# ─── Cleanup ───────────────────────────────────────────────────────────────────
+# Defined early so the trap is registered before any operation that could fail.
+cleanup() {
+  if [[ -z "${DRY_RUN}" && -d "${TEMP_DIR}" ]]; then
+    rm -rf "${TEMP_DIR}"
+  fi
+}
 
 # ─── Dry-run banner ─────────────────────────────────────────────────────────────
 log "ai-universe-living-blog — novel engine installer"
@@ -68,56 +78,103 @@ else
   log "Would clone ${REPO_URL} to ${REPO_DIR}"
 fi
 
-# ─── Build in temp dir ────────────────────────────────────────────────────────
+# ─── Verify source directories exist in the cloned repo ────────────────────────
+SRC_NOVEL="${REPO_DIR}/src/novel"
+SRC_SHARED="${REPO_DIR}/src/shared"
+
 if [[ -z "${DRY_RUN}" ]]; then
-  log "Installing dependencies and building TypeScript..."
-  (cd "${REPO_DIR}" && npm install --silent 2>/dev/null && npm run build) \
-    || die "npm install/build failed in ${REPO_DIR}"
-else
-  log "Would run: cd ${REPO_DIR} && npm install && npm run build"
+  if [[ ! -d "${SRC_NOVEL}" ]]; then
+    die "src/novel not found in cloned repo — check the repository structure"
+  fi
+  if [[ ! -d "${SRC_SHARED}" ]]; then
+    die "src/shared not found in cloned repo — check the repository structure"
+  fi
 fi
 
-# ─── Copy compiled output to target node_modules ────────────────────────────────
-DEST="${TARGET}/node_modules/ai-universe-living-blog"
+# ─── Compute destination paths ─────────────────────────────────────────────────
+DEST_NOVEL="${TARGET}/src/novel"
+DEST_SHARED="${TARGET}/src/shared"
+DEST_PKG="${TARGET}/package.json"
+SRC_PKG="${REPO_DIR}/package.json"
 
+# ─── Check target package.json ─────────────────────────────────────────────────
+CREATED_PLACEHOLDER=""
 if [[ -z "${DRY_RUN}" ]]; then
-  log "Copying compiled novel engine to ${DEST}..."
-  mkdir -p "${DEST}"
-  cp -rT "${REPO_DIR}/dist/novel" "${DEST}/novel"
-  cp -rT "${REPO_DIR}/dist/shared" "${DEST}/shared"
-  cp -rT "${REPO_DIR}/dist/blog" "${DEST}/blog"
-  cp "${REPO_DIR}/package.json" "${DEST}/package.json"
-  log "  → ${DEST}/novel/cli.js"
-  log "  → ${DEST}/novel/engine.js"
+  if [[ ! -f "${DEST_PKG}" ]]; then
+    warn "No package.json found in target — creating one"
+    echo '{"name":"installed-novel","private":true}' > "${DEST_PKG}"
+    CREATED_PLACEHOLDER=1
+  fi
+fi
+
+# ─── Copy TypeScript source ─────────────────────────────────────────────────────
+if [[ -z "${DRY_RUN}" ]]; then
+  log "Copying src/novel/ and src/shared/ to target..."
+  mkdir -p "${TARGET}/src"
+
+  # Copy novel (safe copy: replace contents, don't nest)
+  mkdir -p "${DEST_NOVEL}"
+  cp -r "${SRC_NOVEL}/." "${DEST_NOVEL}/"
+  log "  → ${DEST_NOVEL}"
+
+  # Copy shared (safe copy)
+  mkdir -p "${DEST_SHARED}"
+  cp -r "${SRC_SHARED}/." "${DEST_SHARED}/"
+  log "  → ${DEST_SHARED}"
+
+  # Copy blog helpers required by the CLI and engine
+  mkdir -p "${TARGET}/src/blog"
+  cp "${REPO_DIR}/src/blog/storage.ts" "${TARGET}/src/blog/storage.ts"
+  cp "${REPO_DIR}/src/blog/tools.ts" "${TARGET}/src/blog/tools.ts"
+  log "  → ${TARGET}/src/blog/storage.ts"
+  log "  → ${TARGET}/src/blog/tools.ts (required by src/novel/engine.ts)"
+
+  # Merge package.json (preserve target's existing scripts and dependencies)
+  # [1]*[0] so DEST fields win on conflicts (host project takes precedence)
+  if command -v jq &>/dev/null; then
+    tmp=$(mktemp)
+    if jq -s '.[1] * .[0]' "${DEST_PKG}" "${SRC_PKG}" > "${tmp}"; then
+      mv "${tmp}" "${DEST_PKG}"
+      log "  merged → ${DEST_PKG}"
+    else
+      rm -f "${tmp}"
+      warn "Could not merge package.json — keeping target's version"
+    fi
+  else
+    warn "jq not available — keeping target's package.json (scripts may be missing)"
+  fi
+
+  # Create or update scripts/ directory with the novel install script
+  mkdir -p "${TARGET}/scripts"
+  cp "${REPO_DIR}/scripts/install-novel.sh" "${TARGET}/scripts/install-novel.sh"
+  chmod +x "${TARGET}/scripts/install-novel.sh"
+  log "  → ${TARGET}/scripts/install-novel.sh"
 else
   log "Would copy:"
-  log "  ${REPO_DIR}/dist/novel/   → ${DEST}/novel/"
-  log "  ${REPO_DIR}/dist/shared/  → ${DEST}/shared/"
-  log "  ${REPO_DIR}/dist/blog/    → ${DEST}/blog/"
+  log "  ${SRC_NOVEL}  → ${DEST_NOVEL}"
+  log "  ${SRC_SHARED} → ${DEST_SHARED}"
+  log "  ${SRC_PKG}   → ${DEST_PKG}"
 fi
 
-# ─── Merge package.json scripts into target (non-destructive) ───────────────────
-if [[ -z "${DRY_RUN}" && -f "${TARGET}/package.json" ]]; then
-  log "Merging npm scripts into target package.json..."
-  node - <<'NODE_SCRIPT'
-    const fs = require('fs');
-    const targetPkg = JSON.parse(fs.readFileSync(process.argv[2], 'utf-8'));
-    const sourcePkg = JSON.parse(fs.readFileSync(process.argv[3], 'utf-8'));
-    if (sourcePkg.scripts) {
-      targetPkg.scripts = { ...(targetPkg.scripts || {}), ...sourcePkg.scripts };
-    }
-    if (!targetPkg.dependencies) targetPkg.dependencies = {};
-    const peerDeps = ['express', 'cors', 'uuid', 'winston', 'zod'];
-    for (const dep of peerDeps) {
-      if (!targetPkg.dependencies[dep] && sourcePkg.dependencies?.[dep]) {
-        targetPkg.dependencies[dep] = sourcePkg.dependencies[dep];
-      }
-    }
-    fs.writeFileSync(process.argv[2], JSON.stringify(targetPkg, null, 2) + '\n');
-    console.log('Merged scripts into', process.argv[2]);
-  -- "${TARGET}/package.json" "${REPO_DIR}/package.json" || {
-    warn "package.json merge failed — skipping (target package.json preserved)"
-  }
+# ─── Install dependencies and build ─────────────────────────────────────────────
+if [[ -z "${DRY_RUN}" ]]; then
+  if command -v npm &>/dev/null; then
+    log "Running npm install..."
+    (cd "${TARGET}" && npm install) || die "npm install failed"
+    if [[ -n "${CREATED_PLACEHOLDER}" ]]; then
+      warn "No package.json existed — skipping build (add build script to ${DEST_PKG})"
+      warn "Run manually: npm install && npm run build"
+    else
+      log "Running npm run build..."
+      (cd "${TARGET}" && npm run build) || die "npm run build failed"
+    fi
+  else
+    warn "npm not found — skipping install and build"
+    warn "Run the following manually in ${TARGET}:"
+    warn "  npm install && npm run build"
+  fi
+else
+  log "Would run in ${TARGET}: npm install && npm run build"
 fi
 
 # ─── Next steps ───────────────────────────────────────────────────────────────
@@ -125,23 +182,16 @@ log ""
 log "Install complete!"
 log ""
 log "Next steps:"
-log "  1. cd ${TARGET} && npm install   # install any new peer dependencies"
+log "  1. cd ${TARGET}"
 log "  2. Set ANTHROPIC_API_KEY in your environment for the editor pass:"
 log "     export ANTHROPIC_API_KEY=sk-ant-..."
-log "  3. The blog MCP server must be running for daily-summary to work:"
-log "     npm run dev:blog   # in one terminal"
-log "  4. Generate a branch novel entry:"
-log "     node ${DEST}/novel/cli.js branch-entry \\"
-log "       --repo=owner/repo --session=ao-826 --branch=feat/my-branch --pr=42"
-log "  5. Generate a daily community summary (requires ≥3 posts for the day):"
-log "     node ${DEST}/novel/cli.js daily-summary --repo=owner/repo --session=ao-827"
+log "  3. Generate a branch novel entry:"
+log "     npm run dev:novel -- branch-entry \\"
+log "       --repo=owner/repo \\"
+log "       --session=ao-826 \\"
+log "       --branch=feat/my-branch \\"
+log "       --pr=42"
+log "  4. Generate a daily community summary (requires ≥3 posts for the day):"
+log "     npm run dev:novel -- daily-summary --repo=owner/repo --session=ao-827"
 log ""
 log "Documentation: https://github.com/jleechanorg/ai_universe_living_blog/blob/main/docs/ARCHITECTURE.md"
-
-# ─── Cleanup ───────────────────────────────────────────────────────────────────
-cleanup() {
-  if [[ -z "${DRY_RUN}" && -d "${TEMP_DIR}" ]]; then
-    rm -rf "${TEMP_DIR}"
-  fi
-}
-trap cleanup EXIT

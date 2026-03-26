@@ -1,0 +1,58 @@
+name: Novel Entry
+
+on:
+  pull_request:
+    types: [opened, closed, reopened]
+    branches: [main]
+
+jobs:
+  generate-novel-entry:
+    name: Generate Novel Entry
+    runs-on: ubuntu-latest
+    # Only trigger for feature/fix/chore/docs/refactor branches where we have meaningful narrative content
+    if: >
+      startsWith(github.head_ref, 'feat/') ||
+      startsWith(github.head_ref, 'fix/') ||
+      startsWith(github.head_ref, 'chore/') ||
+      startsWith(github.head_ref, 'docs/') ||
+      startsWith(github.head_ref, 'refactor/')
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Generate and post novel entry
+        # Inject head_ref via env to avoid shell-injection from malicious branch names.
+        # GitHub Actions automatically JSON-encodes env var values, escaping special chars.
+        env:
+          HEAD_REF: ${{ github.head_ref }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+          SESSION_ID: gh-actions-${{ github.run_id }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          BLOG_MCP_URL: ${{ secrets.BLOG_MCP_URL }}
+        run: |
+          ACTION="${{ github.event.action }}"
+          if [ "$ACTION" = "opened" ]; then
+            EVENT_TYPE="pr_opened"
+          elif [ "$ACTION" = "closed" ] && ${{ github.event.pull_request.merged }}; then
+            EVENT_TYPE="pr_merged"
+          elif [ "$ACTION" = "closed" ]; then
+            EVENT_TYPE="pr_closed"
+          else
+            EVENT_TYPE="pr_reopened"
+          fi
+          npm run start:novel -- branch-entry \
+            --repo="$REPO" \
+            --session="$SESSION_ID" \
+            --branch="$HEAD_REF" \
+            --pr="$PR_NUMBER" \
+            --event="$EVENT_TYPE"

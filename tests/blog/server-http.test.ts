@@ -5,7 +5,7 @@
  * Run with: npx vitest run tests/blog/server-http.test.ts
  */
 
-import { describe, it, expect, beforeAll } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import request from 'supertest';
 import type { Application } from 'express';
 
@@ -20,11 +20,20 @@ function mcpPayload(method: string, params?: Record<string, unknown>, id = 1) {
 
 describe('Blog MCP Server HTTP', () => {
   let app: Application;
+  const prevStorageType = process.env['STORAGE_TYPE'];
 
   beforeAll(async () => {
     process.env['STORAGE_TYPE'] = 'memory';
     const { createBlogApp } = await import('../../src/blog/server.js');
     app = await createBlogApp();
+  });
+
+  afterAll(() => {
+    if (prevStorageType !== undefined) {
+      process.env['STORAGE_TYPE'] = prevStorageType;
+    } else {
+      delete process.env['STORAGE_TYPE'];
+    }
   });
 
   // 1

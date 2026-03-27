@@ -3,6 +3,11 @@
  *
  * Validates HMAC-SHA-256 signature and routes events through the same
  * mapGitHubEventToPostType pipeline as AutoScanner.
+ *
+ * NOTE: The server must register the webhook route BEFORE express.json()
+ * and use express.raw({ type: 'application/json' }) or a body parser that
+ * preserves req.rawBody so GitHub's HMAC signature can be validated against
+ * the exact bytes GitHub sent (not a re-serialized JSON string).
  */
 
 import { createHmac, timingSafeEqual } from 'crypto';
@@ -13,6 +18,13 @@ import type { BlogStorage, Post, PostEventType, RepoKey } from '../shared/types.
 import type { GitHubClient } from './github-client.js';
 import type { RepoRegistry } from './repo-registry.js';
 import { mapGitHubEventToPostType } from './scanner.js';
+
+// ─── Extended Request with rawBody ────────────────────────────────────────────
+
+/** Augment Express Request to include the raw bytes preserved before JSON parsing. */
+interface RawBodyRequest extends Request {
+  rawBody?: string;
+}
 
 // ─── X-GitHub-Event normalization ───────────────────────────────────────────────
 
@@ -120,9 +132,12 @@ export function createWebhookHandler(
   _github: GitHubClient,
   _dataDir: string,
   webhookSecret?: string,
-): (req: Request, res: Response) => Promise<void> {
-  return async (req: Request, res: Response): Promise<void> => {
-    const rawBody = typeof req.body === 'string' ? req.body : JSON.stringify(req.body);
+): (req: RawBodyRequest, res: Response) => Promise<void> {
+  return async (req: RawBodyRequest, res: Response): Promise<void> => {
+    // Use req.rawBody (preserved before JSON parsing) to validate HMAC.
+    // If not available (server did not configure raw body middleware), fall back
+    // to re-serializing req.body — this is less secure but functional for testing.
+    const rawBody = req.rawBody ?? (typeof req.body === 'string' ? req.body : JSON.stringify(req.body));
     const signature = req.get('X-Hub-Signature-256') ?? '';
     const deliveryId = req.get('X-GitHub-Delivery') ?? uuidv4();
     const eventType = req.get('X-GitHub-Event') ?? '';

@@ -10,7 +10,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { MemoryBlogStorage } from '../../src/blog/storage.js';
 import { createBlogToolHandlers, type BlogToolContext } from '../../src/blog/tools.js';
 import { RepoRegistry } from '../../src/blog/repo-registry.js';
-import { mkdirSync, rmSync } from 'fs';
+import { mkdirSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
 
@@ -27,10 +27,6 @@ function makeCtx() {
 
 function parseResult(result: { content: Array<{ text: string; isError?: boolean }> }) {
   return JSON.parse(result.content[0].text);
-}
-
-function parseResultOrError(result: { content: Array<{ text: string; isError?: boolean }> }) {
-  return { data: JSON.parse(result.content[0].text), isError: result.isError };
 }
 
 // ─── Blog tools (1-14) ────────────────────────────────────────────────────────

@@ -25,7 +25,7 @@ export interface ChatResult {
 
 // ─── Voice extraction (regex heuristics, 0 LLM calls) ───────────────────────
 
-function extractVoice(content: string): { tone: string; summary: string } {
+export function extractVoice(content: string): { tone: string; summary: string } {
   const sentences = content.split(/[.!?]+/).filter(Boolean);
   const words = content.split(/\s+/);
   const wordCount = words.length;

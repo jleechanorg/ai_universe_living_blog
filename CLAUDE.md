@@ -16,7 +16,7 @@ src/
 ├── blog/            # Blog MCP server
 │   ├── server.ts    # Express HTTP MCP server (stdio-ready)
 │   ├── storage.ts   # MemoryBlogStorage (JSON-file persistence optional)
-│   └── tools.ts     # 11 MCP tools: 7 blog + 3 repo + chat_worker
+│   └── tools.ts     # 13 MCP tools: 7 blog + 4 repo + generate_api_key + chat_worker
 └── novel/           # Novel writing engine
     ├── engine.ts     # Main pipeline orchestrator
     ├── beads.ts     # Story bead system (15 beads, reusable across installments)

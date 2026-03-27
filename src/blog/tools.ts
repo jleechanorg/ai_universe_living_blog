@@ -424,42 +424,54 @@ export function createBlogToolHandlers(ctx: BlogToolContext) {
     async chat_worker(rawParams: unknown) {
       try {
         const params = await ChatWorkerParamsSchema.parseAsync(rawParams);
-        if (!ctx.registry) return toMcpError('registry not available');
 
         // ── Tier 1: Local inference (OPENCLAW_INFERENCE_URL) ───────────────
         const inferenceUrl = process.env['OPENCLAW_INFERENCE_URL'] ?? '';
         if (inferenceUrl) {
-          const res = await fetch(inferenceUrl, {
-            method: 'POST',
-            headers: { 'content-type': 'application/json' },
-            body: JSON.stringify({
-              workerId: params.workerId,
-              message: params.message,
-              repoKey: params.repoKey,
-            }),
-          });
-          if (!res.ok) throw new Error(`Inference endpoint error: ${res.status}`);
-          const data = (await res.json()) as { response?: string; workerId?: string };
-          return toMcpResult({
-            response: data.response ?? "No response from inference endpoint.",
-            workerId: data.workerId ?? params.workerId,
-            tone: 'inferred',
-            backend: 'openclaw',
-          });
+          const controller = new AbortController();
+          const timeout = setTimeout(() => controller.abort(), 30_000);
+          try {
+            const res = await fetch(inferenceUrl, {
+              method: 'POST',
+              headers: { 'content-type': 'application/json' },
+              body: JSON.stringify({
+                workerId: params.workerId,
+                message: params.message,
+                repoKey: params.repoKey,
+              }),
+              signal: controller.signal,
+            });
+            clearTimeout(timeout);
+            if (!res.ok) throw new Error(`Inference endpoint error: ${res.status}`);
+            const data = (await res.json()) as { response?: string; workerId?: string };
+            return toMcpResult({
+              response: data.response ?? "No response from inference endpoint.",
+              workerId: data.workerId ?? params.workerId,
+              tone: 'inferred',
+              backend: 'openclaw',
+            });
+          } catch (err) {
+            clearTimeout(timeout);
+            if (err instanceof Error && err.name === 'AbortError') {
+              throw new Error('Inference endpoint timed out after 30 seconds');
+            }
+            throw err;
+          }
         }
 
         // ── Tier 2: Anthropic API (ANTHROPIC_API_KEY) ──────────────────────
         const anthropicKey = process.env['ANTHROPIC_API_KEY'] ?? '';
         if (anthropicKey) {
+          if (!ctx.registry) return toMcpError('registry not available — Tier 2 (Anthropic) requires registry');
           const { WorkerChat } = await import('../novel/chat.js');
-          const chat = new WorkerChat(ctx.registry, ctx.storage, { anthropicKey });
+          const baseURL = process.env['ANTHROPIC_BASE_URL'] ?? 'https://api.anthropic.com';
+          const chat = new WorkerChat(ctx.registry, ctx.storage, { anthropicKey, baseURL });
           const result = await chat.chat(params.workerId, params.message, params.repoKey);
           return toMcpResult({ ...result, backend: 'anthropic' });
         }
 
         // ── Tier 3: Regex-only voice extraction (no LLM) ────────────────────
-        // Look up the most recent novel_branch_entry for this worker and
-        // extract tone via regex heuristics, then return a deterministic response.
+        const { extractVoice } = await import('../novel/chat.js');
         const page = await ctx.storage.listPosts({
           repoKey: params.repoKey as import('../shared/types.js').RepoKey,
           eventType: 'novel_branch_entry',
@@ -483,24 +495,7 @@ export function createBlogToolHandlers(ctx: BlogToolContext) {
         );
         const entry = matching[0]!;
 
-        // Regex tone extraction — no LLM needed
-        const sentences = entry.content.split(/[.!?]+/).filter(Boolean);
-        const wordCount = entry.content.split(/\s+/).length;
-        const avgSentenceLen = sentences.length > 0
-          ? sentences.reduce((sum, s) => sum + s.trim().split(/\s+/).length, 0) / sentences.length
-          : 0;
-        const contractions = (entry.content.match(/\b\w+'\w+\b/g) || []).length;
-        const firstPerson = (entry.content.match(/\b(I|me|my|we|our)\b/gi) || []).length;
-        const questionCount = (entry.content.match(/\?/g) || []).length;
-
-        const patterns: string[] = [];
-        if (contractions / Math.max(wordCount, 1) > 0.03) patterns.push('contracted');
-        if (questionCount / Math.max(sentences.length, 1) > 0.1) patterns.push('inquisitive');
-        if (avgSentenceLen > 25) patterns.push('formal');
-        else if (avgSentenceLen < 10) patterns.push('terse');
-        if (firstPerson / Math.max(wordCount, 1) > 0.05) patterns.push('introspective');
-
-        const tone = patterns.length > 0 ? patterns.join(', ') : 'neutral';
+        const { tone } = extractVoice(entry.content);
 
         const responses = [
           "Let me think about that for a moment.",

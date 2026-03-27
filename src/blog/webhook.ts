@@ -155,14 +155,12 @@ export function createWebhookHandler(
       return;
     }
 
-    // Extract repo from payload
+    // Extract repo from payload — must have owner/name format
     const repoObj = payload.repository as Record<string, unknown> | undefined;
     const repo =
-      typeof repoObj?.full_name === 'string'
+      typeof repoObj?.full_name === 'string' && repoObj.full_name.includes('/')
         ? repoObj.full_name
-        : typeof repoObj?.name === 'string'
-          ? repoObj.name
-          : '';
+        : '';
 
     if (!repo) {
       res.status(400).json({ error: 'Could not determine repo from payload' });

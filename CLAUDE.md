@@ -16,7 +16,7 @@ src/
 ├── blog/            # Blog MCP server
 │   ├── server.ts    # Express HTTP MCP server (stdio-ready)
 │   ├── storage.ts   # MemoryBlogStorage (JSON-file persistence optional)
-│   └── tools.ts     # 7 MCP tools: create_post, get_post, list_posts, update_post, get_thread, list_threads, health_check
+│   └── tools.ts     # 13 MCP tools: 7 blog + 4 repo + generate_api_key + chat_worker
 └── novel/           # Novel writing engine
     ├── engine.ts     # Main pipeline orchestrator
     ├── beads.ts     # Story bead system (15 beads, reusable across installments)
@@ -42,6 +42,7 @@ npm run dev:blog
 ```
 
 **Tools** (POST JSON-RPC 2.0 to `/mcp`):
+Blog tools:
 - `create_post` — log a PR lifecycle event or novel entry
 - `get_post` — fetch a single post
 - `list_posts` — list posts with cursor pagination
@@ -49,6 +50,16 @@ npm run dev:blog
 - `get_thread` — fetch a thread with all its posts
 - `list_threads` — list threads with cursor pagination
 - `health_check` — server health
+
+Repo tools (no auth — open):
+- `register_repo` — register a repo for auto-scan/webhook/novel modes
+- `unregister_repo` — remove a repo
+- `list_repos` — list all registered repos
+- `update_repo` — update repo settings (enabled, modes, tokens)
+- `generate_api_key` — generate a new API key for authorized access
+
+Worker chat:
+- `chat_worker` — character-consistent chat with fictional AI workers. Three inference backends tried in order: (1) `OPENCLAW_INFERENCE_URL` if set, (2) `ANTHROPIC_API_KEY` if set, (3) regex-only voice extraction fallback (no key required)
 
 ## Novel Engine Usage
 
@@ -179,6 +190,7 @@ docs/evidence/<branch-name>/
 | `PORT` | `8081` | Blog MCP server port |
 | `NODE_ENV` | `development` | Set to `production` for stricter CORS |
 | `AGENT_ID` | `blog-mcp-server` | Agent ID for logging |
-| `ANTHROPIC_API_KEY` | — | Required for top-level editor pass |
+| `ANTHROPIC_API_KEY` | — | Top-level editor + chat_worker Tier 2 (Tier 3 regex fallback works without it) |
 | `ANTHROPIC_BASE_URL` | `https://api.anthropic.com` | Editor LLM base URL |
+| `OPENCLAW_INFERENCE_URL` | — | chat_worker Tier 1: POST endpoint for local inference (no API key needed) |
 | `ALLOWED_ORIGINS` | `*` (dev) | CORS origins in production |

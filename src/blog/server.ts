@@ -12,11 +12,22 @@
  */
 
 import express from 'express';
+import type { Request, Response } from 'express';
 import cors from 'cors';
 import http from 'http';
 import { createStorage } from './storage-factory.js';
 import { createBlogToolHandlers, type BlogToolContext } from './tools.js';
 import { logger } from '../shared/logger.js';
+import { RepoRegistry } from './repo-registry.js';
+import { GitHubClient } from './github-client.js';
+import { createWebhookHandler } from './webhook.js';
+
+// ─── Extended Request with rawBody ────────────────────────────────────────────
+
+/** Augment Express Request to include raw bytes captured before JSON parsing. */
+interface RawBodyRequest extends Request {
+  rawBody?: string;
+}
 
 // ─── Config ───────────────────────────────────────────────────────────────────
 
@@ -45,6 +56,9 @@ const STORAGE_TYPE = (() => {
 })();
 
 const STORAGE_PROJECT_ID = process.env['FIRESTORE_PROJECT_ID'];
+const DATA_DIR = process.env['DATA_DIR'] ?? 'data/';
+const WEBHOOK_SECRET = process.env['WEBHOOK_SECRET'];
+const GITHUB_TOKEN = process.env['GITHUB_TOKEN'];
 const STORAGE_COLLECTION = process.env['FIRESTORE_COLLECTION'] ?? 'posts';
 const NODE_ENV = process.env['NODE_ENV'] ?? 'development';
 const ALLOWED_ORIGINS = process.env['ALLOWED_ORIGINS']
@@ -61,12 +75,26 @@ export async function createBlogApp(): Promise<ReturnType<typeof express>> {
     projectId: STORAGE_PROJECT_ID,
     collection: STORAGE_COLLECTION,
   });
-  const ctx: BlogToolContext = { storage, agentId: AGENT_ID };
+
+  // Initialize RepoRegistry for webhook + future auto-scan
+  const registry = new RepoRegistry(DATA_DIR);
+  const github = new GitHubClient(GITHUB_TOKEN);
+
+  const ctx: BlogToolContext = { storage, agentId: AGENT_ID, registry, dataDir: DATA_DIR };
   const tools = createBlogToolHandlers(ctx);
 
   const app = express();
   app.use(cors({ origin: ALLOWED_ORIGINS }));
-  app.use(express.json({ limit: '10mb' }));
+
+  // ── Capture raw body bytes before JSON parsing (for webhook HMAC) ────────
+  // Use express.json verify callback to capture the exact raw bytes GitHub signed,
+  // before Express re-serializes them. This ensures HMAC validation is byte-exact.
+  app.use(express.json({
+    limit: '10mb',
+    verify(req: unknown, _res: unknown, buf: Buffer) {
+      (req as RawBodyRequest).rawBody = buf.toString('utf8');
+    },
+  } as Parameters<typeof express.json>[0]));
 
   // Health
   app.get('/health', (_req, res) => {
@@ -132,6 +160,10 @@ export async function createBlogApp(): Promise<ReturnType<typeof express>> {
       });
     }
   });
+
+  // ── Webhook receiver ──────────────────────────────────────────────────────
+  const webhookHandler = createWebhookHandler(registry, storage, github, DATA_DIR, WEBHOOK_SECRET);
+  app.post('/webhook', webhookHandler as (req: Request, res: Response) => Promise<void>);
 
   return app;
 }

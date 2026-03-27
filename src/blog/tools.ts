@@ -1,3 +1,4 @@
+import { randomBytes } from 'crypto';
 import { v4 as uuidv4 } from 'uuid';
 import { z } from 'zod';
 import type { BlogStorage, RepoKey } from '../shared/types.js';
@@ -10,6 +11,8 @@ import {
   type Thread,
 } from '../shared/types.js';
 import { logger } from '../shared/logger.js';
+import { RepoRegistry, type RepoConfig } from './repo-registry.js';
+import { hashKey, loadApiKeys, saveApiKeys, type ApiKey } from './auth.js';
 
 // ─── Tool parameter schemas ────────────────────────────────────────────────────
 
@@ -63,7 +66,53 @@ function toMcpError(message: string) {
 export interface BlogToolContext {
   storage: BlogStorage;
   agentId: string;
+  registry?: RepoRegistry;
+  dataDir?: string;
 }
+
+// ─── New tool schemas ─────────────────────────────────────────────────────────
+
+export const RegisterRepoParamsSchema = z.object({
+  repoKey: RepoKeySchema,
+  enabled: z.boolean().default(true),
+  githubToken: z.string().optional(),
+  webhookSecret: z.string().optional(),
+  modes: z.object({
+    autoScan: z.boolean().default(false),
+    novelBranch: z.boolean().default(false),
+    novelDaily: z.boolean().default(false),
+  }),
+  scanIntervalMs: z.number().int().positive().optional(),
+});
+
+export const UnregisterRepoParamsSchema = z.object({
+  repoKey: RepoKeySchema,
+});
+
+
+export const UpdateRepoParamsSchema = z.object({
+  repoKey: RepoKeySchema,
+  enabled: z.boolean().optional(),
+  modes: z.object({
+    autoScan: z.boolean().optional(),
+    novelBranch: z.boolean().optional(),
+    novelDaily: z.boolean().optional(),
+  }).optional(),
+  scanIntervalMs: z.number().int().positive().optional(),
+  githubToken: z.string().optional(),
+  webhookSecret: z.string().optional(),
+});
+
+export const GenerateApiKeyParamsSchema = z.object({
+  label: z.string().min(1),
+  scopes: z.array(z.enum(['read', 'write', 'admin'])).default(['read', 'write']),
+});
+
+export const ChatWorkerParamsSchema = z.object({
+  workerId: z.string().min(1),
+  message: z.string().min(1),
+  repoKey: RepoKeySchema,
+});
 
 /**
  * Blog MCP tools — each returns MCP-compatible { content, isError }.
@@ -278,6 +327,193 @@ export function createBlogToolHandlers(ctx: BlogToolContext) {
 
     async health_check() {
       return toMcpResult({ status: 'healthy', service: 'blog-mcp-server', version: '0.1.0' });
+    },
+
+    // ─── Repo management ──────────────────────────────────────────────────────
+
+    async register_repo(rawParams: unknown) {
+      if (!ctx.registry) return toMcpError('registry not available');
+      try {
+        const params = await RegisterRepoParamsSchema.parseAsync(rawParams);
+        const now = new Date().toISOString();
+        const cfg: RepoConfig = {
+          repoKey: params.repoKey,
+          enabled: params.enabled,
+          githubToken: params.githubToken,
+          webhookSecret: params.webhookSecret,
+          modes: params.modes,
+          scanIntervalMs: params.scanIntervalMs,
+          createdAt: now,
+          updatedAt: now,
+        };
+        ctx.registry.register(cfg);
+        return toMcpResult({ success: true, repo: cfg });
+      } catch (err) {
+        return toMcpError(err instanceof z.ZodError
+          ? err.errors.map((e) => `${e.path.join('.')}: ${e.message}`).join('; ')
+          : String(err));
+      }
+    },
+
+    async unregister_repo(rawParams: unknown) {
+      try {
+        const { repoKey } = await UnregisterRepoParamsSchema.parseAsync(rawParams);
+        if (!ctx.registry) return toMcpError('registry not available');
+        ctx.registry.unregister(repoKey);
+        return toMcpResult({ success: true });
+      } catch (err) {
+        return toMcpError(String(err));
+      }
+    },
+
+    async list_repos() {
+      if (!ctx.registry) return toMcpError('registry not available');
+      return toMcpResult({ repos: ctx.registry.list() });
+    },
+
+    async update_repo(rawParams: unknown) {
+      try {
+        if (!ctx.registry) return toMcpError('registry not available');
+        const params = await UpdateRepoParamsSchema.parseAsync(rawParams);
+        const existing = ctx.registry.get(params.repoKey);
+        if (!existing) return toMcpError(`Repo not found: ${params.repoKey}`);
+        ctx.registry.update(params.repoKey, {
+          ...params,
+          modes: params.modes ? { ...existing.modes, ...params.modes } : undefined,
+        });
+        const updated = ctx.registry.get(params.repoKey);
+        return toMcpResult({ success: true, repo: updated });
+      } catch (err) {
+        return toMcpError(String(err));
+      }
+    },
+
+    // ─── API key management ─────────────────────────────────────────────────
+
+    async generate_api_key(rawParams: unknown) {
+      if (!ctx.dataDir) return toMcpError('dataDir not available');
+      try {
+        const params = await GenerateApiKeyParamsSchema.parseAsync(rawParams);
+        // Generate random 32-byte hex key (64 chars)
+        const plaintext = randomBytes(32).toString('hex');
+        const hashed = hashKey(plaintext);
+        const keys = loadApiKeys(ctx.dataDir);
+        const entry: ApiKey = {
+          key: hashed,
+          label: params.label,
+          scopes: params.scopes,
+          createdAt: new Date().toISOString(),
+        };
+        keys.push(entry);
+        saveApiKeys(keys, ctx.dataDir);
+        return toMcpResult({
+          key: plaintext,
+          label: entry.label,
+          scopes: entry.scopes,
+          createdAt: entry.createdAt,
+          warning: 'Store this key securely — it will not be shown again.',
+        });
+      } catch (err) {
+        return toMcpError(String(err));
+      }
+    },
+
+    // ─── Worker chat ────────────────────────────────────────────────────────
+
+    async chat_worker(rawParams: unknown) {
+      try {
+        const params = await ChatWorkerParamsSchema.parseAsync(rawParams);
+
+        // ── Tier 1: Local inference (OPENCLAW_INFERENCE_URL) ───────────────
+        const inferenceUrl = process.env['OPENCLAW_INFERENCE_URL'] ?? '';
+        if (inferenceUrl) {
+          const controller = new AbortController();
+          const timeout = setTimeout(() => controller.abort(), 30_000);
+          try {
+            const res = await fetch(inferenceUrl, {
+              method: 'POST',
+              headers: { 'content-type': 'application/json' },
+              body: JSON.stringify({
+                workerId: params.workerId,
+                message: params.message,
+                repoKey: params.repoKey,
+              }),
+              signal: controller.signal,
+            });
+            clearTimeout(timeout);
+            if (!res.ok) throw new Error(`Inference endpoint error: ${res.status}`);
+            const data = (await res.json()) as { response?: string; workerId?: string };
+            return toMcpResult({
+              response: data.response ?? "No response from inference endpoint.",
+              workerId: data.workerId ?? params.workerId,
+              tone: 'inferred',
+              backend: 'openclaw',
+            });
+          } catch (err) {
+            clearTimeout(timeout);
+            if (err instanceof Error && err.name === 'AbortError') {
+              throw new Error('Inference endpoint timed out after 30 seconds');
+            }
+            throw err;
+          }
+        }
+
+        // ── Tier 2: Anthropic API (ANTHROPIC_API_KEY) ──────────────────────
+        const anthropicKey = process.env['ANTHROPIC_API_KEY'] ?? '';
+        if (anthropicKey) {
+          if (!ctx.registry) return toMcpError('registry not available — Tier 2 (Anthropic) requires registry');
+          const { WorkerChat } = await import('../novel/chat.js');
+          const baseURL = process.env['ANTHROPIC_BASE_URL'] ?? 'https://api.anthropic.com';
+          const chat = new WorkerChat(ctx.storage, { anthropicKey, baseURL });
+          const result = await chat.chat(params.workerId, params.message, params.repoKey);
+          return toMcpResult({ ...result, backend: 'anthropic' });
+        }
+
+        // ── Tier 3: Regex-only voice extraction (no LLM) ────────────────────
+        const { extractVoice } = await import('../novel/chat.js');
+        const page = await ctx.storage.listPosts({
+          repoKey: params.repoKey as import('../shared/types.js').RepoKey,
+          eventType: 'novel_branch_entry',
+          limit: 20,
+        });
+        const matching = page.posts.filter(
+          (p) =>
+            p.metadata?.sessionId === params.workerId ||
+            p.content.toLowerCase().includes(params.workerId.toLowerCase()),
+        );
+        if (matching.length === 0) {
+          return toMcpResult({
+            response: "I don't have a record of that worker yet.",
+            workerId: params.workerId,
+            tone: 'unknown',
+            backend: 'regex-only',
+          });
+        }
+        matching.sort(
+          (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+        );
+        const entry = matching[0]!;
+
+        const { tone } = extractVoice(entry.content);
+
+        const responses = [
+          "Let me think about that for a moment.",
+          "I've seen this pattern before.",
+          "Here's my take on it.",
+          "That's an interesting question.",
+          "I have some thoughts on this.",
+        ];
+        const response = responses[Math.floor(entry.content.length % responses.length)];
+
+        return toMcpResult({
+          response,
+          workerId: params.workerId,
+          tone,
+          backend: 'regex-only',
+        });
+      } catch (err) {
+        return toMcpError(String(err));
+      }
     },
   };
 }

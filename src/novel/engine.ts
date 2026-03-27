@@ -13,6 +13,8 @@
  */
 
 import { v4 as uuidv4 } from 'uuid';
+import { writeFileSync, mkdirSync, existsSync } from 'node:fs';
+import { join, resolve } from 'node:path';
 import { logger } from '../shared/logger.js';
 import type { RepoKey, BlogStorage } from '../shared/types.js';
 import { createBlogToolHandlers } from '../blog/tools.js';
@@ -132,7 +134,81 @@ export async function runBranchEntryPipeline(
 
   logger.info('Branch entry posted to blog', { postId: parsed.post.id, wordCount });
 
+  // Step 4: Write to novel/workers/ directory (mirrors AO agent-orchestrator layout)
+  const written = writeNovelWorkerEntry({
+    sessionId: config.sessionId,
+    repoKey: config.repoKey,
+    branchName: config.branchName,
+    prNumber: context.prNumber,
+    eventType: context.eventType,
+    content: finalContent,
+    wordCount,
+    beadIds: usedBeadIds,
+    date: new Date().toISOString().split('T')[0],
+  });
+  if (written) {
+    logger.info('Branch entry written to novel/workers/', { sessionId: config.sessionId, path: written });
+  }
+
   return { postId: parsed.post.id, wordCount, beadIds: usedBeadIds };
+}
+
+export interface NovelWorkerEntryParams {
+  sessionId: string;
+  repoKey: RepoKey;
+  branchName: string;
+  prNumber?: number;
+  eventType: string;
+  content: string;
+  wordCount: number;
+  beadIds: string[];
+  date: string; // YYYY-MM-DD
+  /**
+   * Root directory of the repo where novel/workers/ should be created.
+   * Defaults to the working directory at runtime.
+   */
+  repoRoot?: string;
+}
+
+/**
+ * Write a branch novel entry as a markdown file to novel/workers/{sessionId}.md.
+ * Mirrors the layout used by agent-orchestrator AO workers.
+ *
+ * Returns the file path if written, or undefined if NOVEL_WORKERS_DIR is set to "none".
+ */
+export function writeNovelWorkerEntry(params: NovelWorkerEntryParams): string | undefined {
+  const dir = process.env['NOVEL_WORKERS_DIR'] ?? 'novel/workers';
+  if (dir === 'none') {
+    logger.debug('writeNovelWorkerEntry: disabled (NOVEL_WORKERS_DIR=none)');
+    return undefined;
+  }
+
+  const repoRoot = params.repoRoot ?? process.env['NOVEL_REPO_ROOT'] ?? process.cwd();
+  const workersDir = resolve(repoRoot, dir);
+
+  mkdirSync(workersDir, { recursive: true });
+  const fileName = `${params.sessionId}.md`;
+  const filePath = join(workersDir, fileName);
+
+  const header = [
+    `# ${params.sessionId}`,
+    '',
+    `*PR: ${params.prNumber ? `#${params.prNumber}` : 'no PR'} | Date: ${params.date} | Status: ${params.eventType.replace('pr_', '')}*`,
+    '',
+    '---',
+    '',
+  ].join('\n');
+
+  const footer = [
+    '',
+    '---',
+    '',
+    `*Traceability: ${params.beadIds.join(', ') || 'none'} · ${params.wordCount} words · ${params.repoKey}*`,
+  ].join('\n');
+
+  writeFileSync(filePath, header + params.content + footer, 'utf8');
+  logger.debug('Wrote novel worker entry', { filePath, wordCount: params.wordCount });
+  return filePath;
 }
 
 /**

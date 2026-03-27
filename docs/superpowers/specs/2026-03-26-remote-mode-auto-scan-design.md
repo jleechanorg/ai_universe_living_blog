@@ -1,7 +1,7 @@
 # Remote Mode + Auto-Scan Architecture — Design Spec
 
 **Date:** 2026-03-26
-**Status:** Approved
+**Status:** Approved — spec-document-reviewer iteration 1 (1 gap fixed)
 **Repo:** jleechanorg/ai_universe_living_blog
 
 ---
@@ -207,6 +207,8 @@ function createWebhookHandler(
 8. On valid: route event type, process same as AutoScanner
 9. Return `{ ok: true, deliveryId }` on success
 
+**Deduplication:** GitHub re-delivers webhooks on timeout (up to 72h). The AutoScanner's cursor (by GitHub event ID, not delivery ID) already prevents re-processing the same event. Duplicate webhook deliveries within the cursor window are harmless.
+
 **Raw body capture:** Express middleware registered before `express.json()` that saves `req.rawBody` as a string.
 
 ### 6. WorkerChat (`src/novel/chat.ts`)
@@ -233,7 +235,7 @@ class WorkerChat {
 2. Filter posts where `post.metadata?.sessionId === workerId` or `workerId` appears in the content
 3. Sort by `createdAt` descending, take most recent
 4. If no entries found: return `{ response: "I don't have a record of that worker yet.", workerId, tone: 'unknown' }`
-5. Extract voice: scan `post.content` for vocabulary patterns, sentence length, emotional register
+5. Extract voice: regex-based heuristics scan `post.content` for vocabulary patterns, sentence length, emotional register (e.g., count contractions, common adverbs, question frequency, first-person pronoun ratio). This is 0 additional LLM calls — purely syntactic analysis.
 6. Build system prompt:
    ```
    You are {workerId}, a fictional AI worker character from The Daily Lives of Workers.
@@ -293,6 +295,35 @@ npx tsx src/blog/cli.ts repo remove owner/repo
 ```
 
 Uses `RepoRegistry` directly (no network). Exits 0 on success, non-zero on error. All paths relative to `DATA_DIR`.
+
+### 9. generate_api_key MCP Tool
+
+**Parameters (Zod input validation):**
+```typescript
+{
+  label: string;       // human-readable name for the key (e.g., "GCP service account")
+  scopes?: string[];   // default: ['read', 'write'] — options: 'read', 'write', 'admin'
+}
+```
+
+**Behavior:**
+1. Generate a random 32-byte hex string (64 hex chars) as the plaintext key
+2. Hash it with SHA-256 to get the stored value
+3. Load `data/api-keys.json`, append the new entry, save
+4. Return `{ key: plaintextKey, label, scopes, createdAt }` — **plaintext key is never stored or returned again**
+5. Requires `admin` scope to invoke (or no auth in dev mode)
+
+**Response shape:**
+```typescript
+{
+  key: string;        // plaintext — show ONCE, warn the user
+  label: string;
+  scopes: string[];
+  createdAt: string; // ISO-8601
+}
+```
+
+**Auth requirement:** `admin` scope required. If `MASTER_API_KEY` is used to call this tool, the new key gets the requested scopes; `MASTER_API_KEY` itself does not appear in the keys file.
 
 ---
 

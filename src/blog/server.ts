@@ -26,6 +26,28 @@ import { createWebhookHandler } from './webhook.js';
 import { createAutoScanner, type AutoScanner } from './scanner.js';
 import { WorkerChat } from '../novel/chat.js';
 
+// ─── Tool scope map ───────────────────────────────────────────────────────────
+
+/** Maps MCP method names to required API key scopes. */
+const METHOD_SCOPES: Record<string, 'read' | 'write' | 'admin'> = {
+  // Read-only
+  health_check: 'read',
+  get_post: 'read',
+  list_posts: 'read',
+  get_thread: 'read',
+  list_threads: 'read',
+  list_repos: 'read',
+  chat_worker: 'read',
+  // Write — may create/update blog or registry data
+  create_post: 'write',
+  update_post: 'write',
+  register_repo: 'write',
+  unregister_repo: 'write',
+  update_repo: 'write',
+  // Admin — security-sensitive operations
+  generate_api_key: 'admin',
+};
+
 // ─── Config ───────────────────────────────────────────────────────────────────
 
 const AGENT_ID = process.env['AGENT_ID'] ?? 'blog-mcp-server';
@@ -197,6 +219,24 @@ export async function createBlogApp(): Promise<ReturnType<typeof express>> {
           jsonrpc: '2.0', id,
           error: { code: -32601, message: `Method not found: ${method}` },
         });
+      }
+
+      // Scope enforcement: gate write/admin methods to keys with appropriate scopes.
+      // read scope satisfies all read-only methods; write scope satisfies write and read;
+      // admin scope satisfies all methods (admin > write > read).
+      const requiredScope = METHOD_SCOPES[method];
+      if (authEnabled && requiredScope) {
+        const apiKey = res.locals.apiKey;
+        const scopes: string[] = apiKey?.scopes ?? [];
+        const hasAdmin = scopes.includes('admin');
+        const hasWrite = scopes.includes('write');
+        const hasRead = scopes.includes('read');
+        if (requiredScope === 'admin' && !hasAdmin) {
+          return res.json({ jsonrpc: '2.0', id, error: { code: -32603, message: `Forbidden: '${method}' requires admin scope` } });
+        }
+        if (requiredScope === 'write' && !hasAdmin && !hasWrite) {
+          return res.json({ jsonrpc: '2.0', id, error: { code: -32603, message: `Forbidden: '${method}' requires write scope` } });
+        }
       }
 
       try {

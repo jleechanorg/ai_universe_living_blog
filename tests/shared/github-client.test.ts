@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterAll } from 'vitest';
 
 // ─── Call tracker ───────────────────────────────────────────────────────────
 
@@ -54,6 +54,10 @@ const { GitHubClient } = await import('../../src/shared/github-client.js');
 describe('GitHubClient', () => {
   beforeEach(() => {
     callTracker.clear();
+  });
+
+  afterAll(() => {
+    vi.unstubAllGlobals();
   });
 
   // ── Constructor / token in requests ───────────────────────────────────────────

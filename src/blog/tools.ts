@@ -89,7 +89,6 @@ export const UnregisterRepoParamsSchema = z.object({
   repoKey: RepoKeySchema,
 });
 
-export const ListReposParamsSchema = z.object({});
 
 export const UpdateRepoParamsSchema = z.object({
   repoKey: RepoKeySchema,
@@ -333,6 +332,7 @@ export function createBlogToolHandlers(ctx: BlogToolContext) {
     // ─── Repo management ──────────────────────────────────────────────────────
 
     async register_repo(rawParams: unknown) {
+      if (!ctx.registry) return toMcpError('registry not available');
       try {
         const params = await RegisterRepoParamsSchema.parseAsync(rawParams);
         const now = new Date().toISOString();
@@ -346,7 +346,6 @@ export function createBlogToolHandlers(ctx: BlogToolContext) {
           createdAt: now,
           updatedAt: now,
         };
-        if (!ctx.registry) return toMcpError('registry not available');
         ctx.registry.register(cfg);
         return toMcpResult({ success: true, repo: cfg });
       } catch (err) {
@@ -392,12 +391,12 @@ export function createBlogToolHandlers(ctx: BlogToolContext) {
     // ─── API key management ─────────────────────────────────────────────────
 
     async generate_api_key(rawParams: unknown) {
+      if (!ctx.dataDir) return toMcpError('dataDir not available');
       try {
         const params = await GenerateApiKeyParamsSchema.parseAsync(rawParams);
         // Generate random 32-byte hex key (64 chars)
         const plaintext = randomBytes(32).toString('hex');
         const hashed = hashKey(plaintext);
-        if (!ctx.dataDir) return toMcpError('dataDir not available');
         const keys = loadApiKeys(ctx.dataDir);
         const entry: ApiKey = {
           key: hashed,

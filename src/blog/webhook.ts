@@ -4,10 +4,10 @@
  * Validates HMAC-SHA-256 signature and routes events through the same
  * mapGitHubEventToPostType pipeline as AutoScanner.
  *
- * NOTE: The server must register the webhook route BEFORE express.json()
- * and use express.raw({ type: 'application/json' }) or a body parser that
- * preserves req.rawBody so GitHub's HMAC signature can be validated against
- * the exact bytes GitHub sent (not a re-serialized JSON string).
+ * NOTE: The server must use a custom middleware BEFORE express.json() that
+ * preserves the raw request body bytes (as req.rawBody) so GitHub's HMAC
+ * signature can be validated against the exact bytes GitHub sent
+ * (not a re-serialized JSON string). See server.ts RawBodyRequest middleware.
  */
 
 import { createHmac, timingSafeEqual } from 'crypto';

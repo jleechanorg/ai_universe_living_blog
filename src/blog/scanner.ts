@@ -203,7 +203,9 @@ export function createAutoScanner(
             await storage.createPost(post);
             logger.info('scanner: created post', { repoKey: repo.repoKey, postType, eventId: event.id });
 
-            // Update cursor in memory — isolated per handler, saved at end
+            // Update cursor in memory — isolated per handler, saved at end.
+            // GitHub delivery IDs are globally unique integers; string comparison
+            // correctly tracks "most recent seen" for cursor deduplication purposes.
             if (!cursor[repo.repoKey] || event.id > cursor[repo.repoKey].lastEventId) {
               cursor[repo.repoKey] = {
                 lastEventId: event.id,

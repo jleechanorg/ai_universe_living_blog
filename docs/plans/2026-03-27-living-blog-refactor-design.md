@@ -107,13 +107,14 @@ Output path: novel/workers/{sessionId}.md
 | `--output-dir` | no | Prompt output dir (default: `~/.blog/prompts/`) |
 
 **Output flow:**
-1. `GitHubClient.getPREvents()` fetches all events for the PR
-2. `GitHubClient.getPRDetails()` fetches PR title, body, author, branch
-3. `GitHubClient.getCommits()` fetches commit list for the PR
-4. `GitHubClient.getCheckRuns()` fetches CI check runs
-5. `GitHubClient.getReviews()` fetches review events
-6. Assemble structured prompt file at `~/.blog/prompts/{sessionId}.md`
-7. Log: `Prompt written to ~/.blog/prompts/{sessionId}.md — AO worker will generate the entry`
+1. `GitHubClient.getPR()` fetches PR title, body, author, branch, head SHA
+2. `GitHubClient.getCommits()` fetches commit list for the PR
+3. `GitHubClient.getCheckRuns()` fetches CI check runs for the head SHA
+4. `GitHubClient.getReviews()` fetches review events for the PR
+5. Assemble structured prompt file at `~/.blog/prompts/{sessionId}.md`
+6. Log: `Prompt written to ~/.blog/prompts/{sessionId}.md — AO worker will generate the entry`
+
+> The CLI does **not** fetch PR events (git history). Events are surfaced by the MCP server's AutoScanner or the blog's `listRecentActivity()` tool for non-AO use cases.
 
 > **AO worker integration:** AO lifecycle hook reads the prompt file and passes it as input context to the AO worker. The worker generates the entry, writes it to `novel/workers/{sessionId}.md`, and (optionally) POSTs to MCP server.
 
@@ -369,7 +370,12 @@ In the AO agent config (or CLAUDE.md of the worker repo), add:
 }
 ```
 
-**Read from FIFO:** MCP server opens FIFO for non-blocking read (100ms timeout), collects response:
+**Read from FIFO:** MCP server opens FIFO for non-blocking read, collecting responses until the FIFO closes or the overall wait expires. Two timeouts are in play:
+- **Per-read timeout: 100ms** — each non-blocking `read()` call times out after 100ms; the server loops and tries again
+- **Overall wait: 5 seconds** — if the FIFO produces no data within 5 seconds total, fall back to simulated response via `WorkerChat`
+
+The ghFetch API call timeout (default: 10 seconds) is independent — it applies to GitHub REST API calls, not FIFO I/O.
+
 ```json
 {
   "from": "worker",

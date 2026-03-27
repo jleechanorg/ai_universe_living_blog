@@ -1,3 +1,4 @@
+import { randomBytes } from 'crypto';
 import { v4 as uuidv4 } from 'uuid';
 import { z } from 'zod';
 import type { BlogStorage, RepoKey } from '../shared/types.js';
@@ -10,6 +11,8 @@ import {
   type Thread,
 } from '../shared/types.js';
 import { logger } from '../shared/logger.js';
+import { RepoRegistry, type RepoConfig } from './repo-registry.js';
+import { hashKey, loadApiKeys, saveApiKeys, type ApiKey } from './auth.js';
 
 // ─── Tool parameter schemas ────────────────────────────────────────────────────
 
@@ -63,7 +66,54 @@ function toMcpError(message: string) {
 export interface BlogToolContext {
   storage: BlogStorage;
   agentId: string;
+  registry?: RepoRegistry;
+  dataDir?: string;
 }
+
+// ─── New tool schemas ─────────────────────────────────────────────────────────
+
+export const RegisterRepoParamsSchema = z.object({
+  repoKey: RepoKeySchema,
+  enabled: z.boolean().default(true),
+  githubToken: z.string().optional(),
+  webhookSecret: z.string().optional(),
+  modes: z.object({
+    autoScan: z.boolean().default(false),
+    novelBranch: z.boolean().default(false),
+    novelDaily: z.boolean().default(false),
+  }).optional(),
+  scanIntervalMs: z.number().int().positive().optional(),
+});
+
+export const UnregisterRepoParamsSchema = z.object({
+  repoKey: RepoKeySchema,
+});
+
+export const ListReposParamsSchema = z.object({});
+
+export const UpdateRepoParamsSchema = z.object({
+  repoKey: RepoKeySchema,
+  enabled: z.boolean().optional(),
+  modes: z.object({
+    autoScan: z.boolean().optional(),
+    novelBranch: z.boolean().optional(),
+    novelDaily: z.boolean().optional(),
+  }).optional(),
+  scanIntervalMs: z.number().int().positive().optional(),
+  githubToken: z.string().optional(),
+  webhookSecret: z.string().optional(),
+});
+
+export const GenerateApiKeyParamsSchema = z.object({
+  label: z.string().min(1),
+  scopes: z.array(z.enum(['read', 'write', 'admin'])).default(['read', 'write']),
+});
+
+export const ChatWorkerParamsSchema = z.object({
+  workerId: z.string().min(1),
+  message: z.string().min(1),
+  repoKey: RepoKeySchema,
+});
 
 /**
  * Blog MCP tools — each returns MCP-compatible { content, isError }.
@@ -278,6 +328,198 @@ export function createBlogToolHandlers(ctx: BlogToolContext) {
 
     async health_check() {
       return toMcpResult({ status: 'healthy', service: 'blog-mcp-server', version: '0.1.0' });
+    },
+
+    // ─── Repo management ──────────────────────────────────────────────────────
+
+    async register_repo(rawParams: unknown) {
+      try {
+        const params = await RegisterRepoParamsSchema.parseAsync(rawParams);
+        const now = new Date().toISOString();
+        const cfg: RepoConfig = {
+          repoKey: params.repoKey,
+          enabled: params.enabled,
+          githubToken: params.githubToken,
+          webhookSecret: params.webhookSecret,
+          modes: params.modes ?? { autoScan: false, novelBranch: false, novelDaily: false },
+          scanIntervalMs: params.scanIntervalMs,
+          createdAt: now,
+          updatedAt: now,
+        };
+        if (!ctx.registry) return toMcpError('registry not available');
+        ctx.registry.register(cfg);
+        return toMcpResult({ success: true, repo: cfg });
+      } catch (err) {
+        return toMcpError(err instanceof z.ZodError
+          ? err.errors.map((e) => `${e.path.join('.')}: ${e.message}`).join('; ')
+          : String(err));
+      }
+    },
+
+    async unregister_repo(rawParams: unknown) {
+      try {
+        const { repoKey } = await UnregisterRepoParamsSchema.parseAsync(rawParams);
+        if (!ctx.registry) return toMcpError('registry not available');
+        ctx.registry.unregister(repoKey);
+        return toMcpResult({ success: true });
+      } catch (err) {
+        return toMcpError(String(err));
+      }
+    },
+
+    async list_repos() {
+      if (!ctx.registry) return toMcpError('registry not available');
+      return toMcpResult({ repos: ctx.registry.list() });
+    },
+
+    async update_repo(rawParams: unknown) {
+      try {
+        if (!ctx.registry) return toMcpError('registry not available');
+        const params = await UpdateRepoParamsSchema.parseAsync(rawParams);
+        const existing = ctx.registry.get(params.repoKey);
+        if (!existing) return toMcpError(`Repo not found: ${params.repoKey}`);
+        ctx.registry.update(params.repoKey, {
+          ...params,
+          modes: params.modes ? { ...existing.modes, ...params.modes } : undefined,
+        });
+        const updated = ctx.registry.get(params.repoKey);
+        return toMcpResult({ success: true, repo: updated });
+      } catch (err) {
+        return toMcpError(String(err));
+      }
+    },
+
+    // ─── API key management ─────────────────────────────────────────────────
+
+    async generate_api_key(rawParams: unknown) {
+      try {
+        const params = await GenerateApiKeyParamsSchema.parseAsync(rawParams);
+        // Generate random 32-byte hex key (64 chars)
+        const plaintext = randomBytes(32).toString('hex');
+        const hashed = hashKey(plaintext);
+        if (!ctx.dataDir) return toMcpError('dataDir not available');
+        const keys = loadApiKeys(ctx.dataDir);
+        const entry: ApiKey = {
+          key: hashed,
+          label: params.label,
+          scopes: params.scopes,
+          createdAt: new Date().toISOString(),
+        };
+        keys.push(entry);
+        saveApiKeys(keys, ctx.dataDir);
+        return toMcpResult({
+          key: plaintext,
+          label: entry.label,
+          scopes: entry.scopes,
+          createdAt: entry.createdAt,
+          warning: 'Store this key securely — it will not be shown again.',
+        });
+      } catch (err) {
+        return toMcpError(String(err));
+      }
+    },
+
+    // ─── Worker chat ────────────────────────────────────────────────────────
+
+    async chat_worker(rawParams: unknown) {
+      try {
+        const params = await ChatWorkerParamsSchema.parseAsync(rawParams);
+        if (!ctx.registry) return toMcpError('registry not available');
+
+        // ── Tier 1: Local inference (OPENCLAW_INFERENCE_URL) ───────────────
+        const inferenceUrl = process.env['OPENCLAW_INFERENCE_URL'] ?? '';
+        if (inferenceUrl) {
+          const res = await fetch(inferenceUrl, {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({
+              workerId: params.workerId,
+              message: params.message,
+              repoKey: params.repoKey,
+            }),
+          });
+          if (!res.ok) throw new Error(`Inference endpoint error: ${res.status}`);
+          const data = (await res.json()) as { response?: string; workerId?: string };
+          return toMcpResult({
+            response: data.response ?? "No response from inference endpoint.",
+            workerId: data.workerId ?? params.workerId,
+            tone: 'inferred',
+            backend: 'openclaw',
+          });
+        }
+
+        // ── Tier 2: Anthropic API (ANTHROPIC_API_KEY) ──────────────────────
+        const anthropicKey = process.env['ANTHROPIC_API_KEY'] ?? '';
+        if (anthropicKey) {
+          const { WorkerChat } = await import('../novel/chat.js');
+          const chat = new WorkerChat(ctx.registry, ctx.storage, { anthropicKey });
+          const result = await chat.chat(params.workerId, params.message, params.repoKey);
+          return toMcpResult({ ...result, backend: 'anthropic' });
+        }
+
+        // ── Tier 3: Regex-only voice extraction (no LLM) ────────────────────
+        // Look up the most recent novel_branch_entry for this worker and
+        // extract tone via regex heuristics, then return a deterministic response.
+        const page = await ctx.storage.listPosts({
+          repoKey: params.repoKey as import('../shared/types.js').RepoKey,
+          eventType: 'novel_branch_entry',
+          limit: 20,
+        });
+        const matching = page.posts.filter(
+          (p) =>
+            p.metadata?.sessionId === params.workerId ||
+            p.content.toLowerCase().includes(params.workerId.toLowerCase()),
+        );
+        if (matching.length === 0) {
+          return toMcpResult({
+            response: "I don't have a record of that worker yet.",
+            workerId: params.workerId,
+            tone: 'unknown',
+            backend: 'regex-only',
+          });
+        }
+        matching.sort(
+          (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+        );
+        const entry = matching[0]!;
+
+        // Regex tone extraction — no LLM needed
+        const sentences = entry.content.split(/[.!?]+/).filter(Boolean);
+        const wordCount = entry.content.split(/\s+/).length;
+        const avgSentenceLen = sentences.length > 0
+          ? sentences.reduce((sum, s) => sum + s.trim().split(/\s+/).length, 0) / sentences.length
+          : 0;
+        const contractions = (entry.content.match(/\b\w+'\w+\b/g) || []).length;
+        const firstPerson = (entry.content.match(/\b(I|me|my|we|our)\b/gi) || []).length;
+        const questionCount = (entry.content.match(/\?/g) || []).length;
+
+        const patterns: string[] = [];
+        if (contractions / Math.max(wordCount, 1) > 0.03) patterns.push('contracted');
+        if (questionCount / Math.max(sentences.length, 1) > 0.1) patterns.push('inquisitive');
+        if (avgSentenceLen > 25) patterns.push('formal');
+        else if (avgSentenceLen < 10) patterns.push('terse');
+        if (firstPerson / Math.max(wordCount, 1) > 0.05) patterns.push('introspective');
+
+        const tone = patterns.length > 0 ? patterns.join(', ') : 'neutral';
+
+        const responses = [
+          "Let me think about that for a moment.",
+          "I've seen this pattern before.",
+          "Here's my take on it.",
+          "That's an interesting question.",
+          "I have some thoughts on this.",
+        ];
+        const response = responses[Math.floor(entry.content.length % responses.length)];
+
+        return toMcpResult({
+          response,
+          workerId: params.workerId,
+          tone,
+          backend: 'regex-only',
+        });
+      } catch (err) {
+        return toMcpError(String(err));
+      }
     },
   };
 }

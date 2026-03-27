@@ -586,8 +586,9 @@ The install script:
 | `STORAGE` | `memory` | `memory` or `firestore` |
 | `FIRESTORE_PROJECT_ID` | _(none)_ | GCP project for Firestore storage |
 | `FIRESTORE_EMULATOR_HOST` | _(none)_ | Firestore emulator address (local dev) |
-| `ANTHROPIC_API_KEY` | _(none)_ | Required for Sonnet top-level editor pass |
+| `ANTHROPIC_API_KEY` | _(none)_ | Top-level editor + chat_worker Tier 2 (Tier 3 regex-only works without it) |
 | `ANTHROPIC_BASE_URL` | `https://api.anthropic.com` | LLM base URL (override for proxies) |
+| `OPENCLAW_INFERENCE_URL` | _(none)_ | chat_worker Tier 1: POST endpoint for local inference (no API key needed) |
 | `ALLOWED_ORIGINS` | `*` | Comma-separated CORS origins in production |
 | `BLOG_MCP_URL` | `http://localhost:8081` | Blog server URL for hooks and novel CLI |
 

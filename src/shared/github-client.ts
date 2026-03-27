@@ -33,9 +33,14 @@ export interface GHCommit {
 export interface GHPullRequest {
   number: number;
   title: string;
+  body: string;
   state: string;
   merged: boolean;
   url: string;
+  author: string;
+  headBranch: string;
+  /** Latest commit SHA of the head branch. */
+  headSha: string;
 }
 
 export interface GHCheckRun {
@@ -180,9 +185,13 @@ export class GitHubClient {
     return {
       number: data.number as number,
       title: data.title as string,
+      body: (data.body as string) ?? '',
       state: data.state as string,
       merged: Boolean(data.merged),
       url: data.html_url as string,
+      author: ((data.user as Record<string, unknown>)?.login as string) ?? '',
+      headBranch: ((data.head as Record<string, unknown>)?.ref as string) ?? '',
+      headSha: ((data.head as Record<string, unknown>)?.sha as string) ?? '',
     };
   }
 

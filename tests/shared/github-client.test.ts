@@ -176,11 +176,18 @@ describe('GitHubClient', () => {
       callTracker.setData({
         number: 42, title: 'Add auth', state: 'open',
         merged: false, html_url: 'https://github.com/owner/repo/pull/42',
+        body: 'This PR adds OAuth support.',
+        user: { login: 'worker-42' },
+        head: { ref: 'feat/oauth', sha: 'abc1234' },
       });
       const result = await new GitHubClient().getPR('owner', 'repo', 42);
       expect(result).toEqual({
         number: 42, title: 'Add auth', state: 'open', merged: false,
         url: 'https://github.com/owner/repo/pull/42',
+        body: 'This PR adds OAuth support.',
+        author: 'worker-42',
+        headBranch: 'feat/oauth',
+        headSha: 'abc1234',
       });
     });
   });

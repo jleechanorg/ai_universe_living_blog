@@ -78,11 +78,12 @@ export type ValidKeyStore = ApiKey[];
  * Express middleware: requires a valid X-API-Key header.
  *
  * - Hashes the submitted key and compares against all stored hashes
- * - Updates `lastUsedAt` on the matched key (caller should call saveApiKeys)
+ * - Keys are loaded lazily on every request so newly generated keys
+ *   (e.g. via `generate_api_key`) are recognized without a restart
  * - Sets `res.locals.apiKey` to the matched ApiKey object
  * - Returns 401 if missing, invalid, or insufficient scope
  */
-export function requireApiKey(validKeys: ValidKeyStore, requiredScope?: string) {
+export function requireApiKey(dataDir: string, requiredScope?: string) {
   return (req: Request, res: Response, next: NextFunction): void => {
     const submitted = req.get('X-API-Key');
     if (!submitted) {
@@ -90,6 +91,8 @@ export function requireApiKey(validKeys: ValidKeyStore, requiredScope?: string) 
       return;
     }
 
+    // Lazy-load so newly generated keys are recognized immediately
+    const validKeys = loadApiKeys(dataDir);
     const matched = validKeys.find((k) => verifyKey(submitted, k.key));
     if (!matched) {
       res.status(401).json({ error: 'Invalid API key' });
@@ -101,8 +104,10 @@ export function requireApiKey(validKeys: ValidKeyStore, requiredScope?: string) 
       return;
     }
 
-    // Update lastUsedAt in place (caller must persist if needed)
+    // Persist lastUsedAt so keys can be tracked
     matched.lastUsedAt = new Date().toISOString();
+    const updated = validKeys.map((k) => (k.key === matched.key ? matched : k));
+    saveApiKeys(updated, dataDir);
     res.locals.apiKey = matched;
     next();
   };

@@ -92,6 +92,9 @@ export async function createBlogApp(): Promise<ReturnType<typeof express>> {
 
   // ── Auth + rate limiting ─────────────────────────────────────────────────────
   const authEnabled = !!(API_KEY || API_KEYS_FILE);
+  // Load keys at startup for MASTER_API_KEY registration only.
+  // The middleware itself lazy-loads keys on every request so newly
+  // generated keys (via generate_api_key) are recognized without restart.
   let validKeys: ApiKey[] = [];
   if (authEnabled) {
     validKeys = loadApiKeys(DATA_DIR);
@@ -147,7 +150,7 @@ export async function createBlogApp(): Promise<ReturnType<typeof express>> {
   // POST /mcp — MCP JSON-RPC endpoint
   app.post(
     '/mcp',
-    authEnabled ? [mcpLimiter, requireApiKey(validKeys)] : [],
+    authEnabled ? [mcpLimiter, requireApiKey(DATA_DIR)] : [],
     async (req: Request, res: Response) => {
       const body = req.body;
       if (typeof body !== 'object' || body === null) {
@@ -196,7 +199,7 @@ export async function createBlogApp(): Promise<ReturnType<typeof express>> {
   const chat = new WorkerChat(registry, storage, { anthropicKey: ANTHROPIC_API_KEY });
   app.post(
     '/chat',
-    authEnabled ? [chatLimiter, requireApiKey(validKeys)] : [],
+    authEnabled ? [chatLimiter, requireApiKey(DATA_DIR)] : [],
     async (req: Request, res: Response) => {
       try {
         const { workerId, message, repoKey } = req.body as {

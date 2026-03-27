@@ -46,7 +46,6 @@ describe('install.sh smoke test', () => {
   let SERVER_PORT = 0; // assigned dynamically
 
   beforeAll(() => {
-    // Create temp directory with git repo + package.json (install.sh requires both)
     // mkdtempSync already creates the directory; just verify it exists
     // Write a placeholder so the initial commit is not empty (avoids "nothing to commit" failure)
     writeFileSync(join(TEST_DIR, 'README.md'), '# test repo\n');
@@ -67,6 +66,19 @@ describe('install.sh smoke test', () => {
       const repoRoot = join(fileURLToPath(import.meta.url), '..', '..');
       const scriptPath = join(repoRoot, 'install.sh');
       expect(existsSync(scriptPath), `install.sh must exist at ${scriptPath}`).toBe(true);
+
+      // Guard: require the source tree to be pre-built so failures are attributable.
+      // Without this, a missing dist/ is silently masked if --source copies nothing.
+      const sourceServer = join(repoRoot, 'dist', 'blog', 'server.js');
+      const sourceShared = join(repoRoot, 'dist', 'shared');
+      expect(
+        existsSync(sourceServer),
+        `Smoke test requires a built source tree; missing ${sourceServer}`,
+      ).toBe(true);
+      expect(
+        existsSync(sourceShared),
+        `Smoke test requires a built source tree; missing ${sourceShared}`,
+      ).toBe(true);
 
       // Use --source so install.sh copies from the LOCAL built repo instead of cloning from GitHub.
       // This lets the smoke test test the local build (which may differ from main).
@@ -118,7 +130,7 @@ describe('install.sh smoke test', () => {
 
         expect(started, `server did not start in 5s — output:\n${output.join('')}`).toBe(true);
 
-        // ── Assert /health returns 200 with {status: "ok"} ────────────────────
+        // ── Assert /health returns 200 with {status: "ok"} ───────────────────
         const res = await httpGet(SERVER_PORT, '/health');
         expect(res.status, `Expected 200, got ${res.status}. Body: ${res.body}`).toBe(200);
 

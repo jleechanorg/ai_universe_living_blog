@@ -1,5 +1,8 @@
 # CodeRabbit configuration
+# Firestore storage + storage factory PR
 # Enables APPROVE/REQUEST_CHANGES review states
+plan:
+  name: standard
 reviews:
   review_status: true
   request_changes_workflow: true

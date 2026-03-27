@@ -104,6 +104,11 @@ install_blog() {
   local dest="${TARGET}/node_modules/ai-universe-living-blog"
   if [[ -z "${DRY_RUN}" ]]; then
     mkdir -p "${dest}"
+    # Fail fast when --source is used but the source isn't pre-built.
+    if [[ -n "${SOURCE_DIR}" ]]; then
+      [[ -d "${SRC_ROOT}/dist/shared" ]] || die "--source requires a built checkout (missing ${SRC_ROOT}/dist/shared); run: cd ${SOURCE_DIR} && npm install && npm run build"
+      [[ -n "${NOVEL_ONLY}" || -d "${SRC_ROOT}/dist/blog" ]] || die "--source requires ${SRC_ROOT}/dist/blog (or run: cd ${SOURCE_DIR} && npm install && npm run build)"
+    fi
     # Build TypeScript so dist/ exists — single authoritative build step.
     # Skip if --source was used (local source already has node_modules + dist/).
     if [[ -z "${SOURCE_DIR}" ]] && command -v npm &>/dev/null && [[ -f "${SRC_ROOT}/package.json" ]]; then
@@ -113,9 +118,15 @@ install_blog() {
     mkdir -p "${dest}/dist/blog"
     cp -r "${SRC_ROOT}/dist/blog/"* "${dest}/dist/blog/"
     cp -r "${SRC_ROOT}/dist/shared" "${dest}/dist/"
-    # Copy npm dependencies so the server can resolve express, cors, etc.
-    # at the TARGET level (not inside the package subdirectory).
-    cp -r "${SRC_ROOT}/node_modules/"* "${TARGET}/node_modules/" 2>/dev/null || true
+    # Stage a proper local package outside node_modules so npm can reinstall it.
+    # The file: dependency in package.json handles transitive deps when npm install runs.
+    # This is used by install_npm_dep when --source is set.
+    local local_pkg_dir="${TARGET}/.install-pkgs/ai-universe-living-blog"
+    mkdir -p "${local_pkg_dir}/dist/blog"
+    mkdir -p "${local_pkg_dir}/dist/shared"
+    cp "${SRC_ROOT}/package.json" "${local_pkg_dir}/"
+    cp -r "${SRC_ROOT}/dist/blog/"* "${local_pkg_dir}/dist/blog/"
+    cp -r "${SRC_ROOT}/dist/shared" "${local_pkg_dir}/dist/"
   fi
   log "  → Blog server: ${dest}/dist/blog"
   log "  → MCP path: ${dest}/dist/blog/server.js"
@@ -128,13 +139,26 @@ install_novel() {
   local dest="${TARGET}/node_modules/ai-universe-living-blog"
   if [[ -z "${DRY_RUN}" ]]; then
     mkdir -p "${dest}"
-    # Build TypeScript first so dist/ exists — single authoritative build step
-    if command -v npm &>/dev/null && [[ -f "${SRC_ROOT}/package.json" ]]; then
+    # Build TypeScript first so dist/ exists — single authoritative build step.
+    # Skip if --source was used (local source already has node_modules + dist/).
+    if [[ -z "${SOURCE_DIR}" ]] && command -v npm &>/dev/null && [[ -f "${SRC_ROOT}/package.json" ]]; then
       (cd "${SRC_ROOT}" && npm install --silent 2>/dev/null && npm run build) || \
         die "npm build failed in ${SRC_ROOT} — cannot install"
     fi
+    # Fail fast when --source is used but the source isn't pre-built.
+    if [[ -n "${SOURCE_DIR}" ]]; then
+      [[ -d "${SRC_ROOT}/dist/shared" ]] || die "--source requires a built checkout (missing ${SRC_ROOT}/dist/shared); run: cd ${SOURCE_DIR} && npm install && npm run build"
+      [[ -n "${BLOG_ONLY}" || -d "${SRC_ROOT}/dist/novel" ]] || die "--source requires ${SRC_ROOT}/dist/novel (or run: cd ${SOURCE_DIR} && npm install && npm run build)"
+    fi
     cp -r "${SRC_ROOT}/dist/novel" "${dest}/dist/"
     cp -r "${SRC_ROOT}/dist/shared" "${dest}/dist/"
+    # Stage a proper local package for novel (mirrors blog staging pattern).
+    local local_pkg_dir="${TARGET}/.install-pkgs/ai-universe-living-blog"
+    mkdir -p "${local_pkg_dir}/dist/novel"
+    mkdir -p "${local_pkg_dir}/dist/shared"
+    cp "${SRC_ROOT}/package.json" "${local_pkg_dir}/"
+    cp -r "${SRC_ROOT}/dist/novel" "${local_pkg_dir}/dist/"
+    cp -r "${SRC_ROOT}/dist/shared" "${local_pkg_dir}/dist/"
   fi
   log "  → Novel engine: ${dest}/dist/novel/engine.js"
   log "  → CLI: node ${dest}/dist/novel/cli.js"
@@ -209,24 +233,44 @@ install_npm_dep() {
       if [[ -n "${CREATED_PLACEHOLDER}" ]]; then
         warn "No package.json existed — skipping npm install (add dependencies to ${TARGET}/package.json)"
         warn "Run manually: npm install"
+      elif [[ -n "${SOURCE_DIR}" ]]; then
+        # Use local source — stage a proper package and add as file: dependency.
+        # .install-pkgs/ is outside node_modules so npm can reinstall it cleanly.
+        local local_pkg_dir="${TARGET}/.install-pkgs/ai-universe-living-blog"
+        if command -v jq &>/dev/null; then
+          local tmp
+          tmp=$(mktemp)
+          if jq --arg dep "file:./.install-pkgs/ai-universe-living-blog" \
+             '.dependencies["ai-universe-living-blog"] = $dep' \
+             "${TARGET}/package.json" > "${tmp}"; then
+            mv "${tmp}" "${TARGET}/package.json"
+            log "Added ai-universe-living-blog as file: dependency (local source)"
+          else
+            rm -f "${tmp}"
+            warn "Could not update package.json — add manually: \"ai-universe-living-blog\": \"file:./.install-pkgs/ai-universe-living-blog\""
+          fi
+        else
+          warn "jq not available — add manually to ${TARGET}/package.json:"
+          warn "  \"dependencies\": { \"ai-universe-living-blog\": \"file:./.install-pkgs/ai-universe-living-blog\" }"
+        fi
       elif ! (cd "${TARGET}" && npm install --save ai-universe-living-blog@latest 2>/dev/null); then
-        # Fallback: add as a file: dependency pointing to the copied node_modules path
+        # Fallback: add as a file: dependency pointing to the staged package.
         warn "npm install failed — adding as file: dependency..."
         if command -v jq &>/dev/null; then
           local tmp
           tmp=$(mktemp)
-          if jq --arg dep "file:./node_modules/ai-universe-living-blog" \
+          if jq --arg dep "file:./.install-pkgs/ai-universe-living-blog" \
              '.dependencies["ai-universe-living-blog"] = $dep' \
              "${TARGET}/package.json" > "${tmp}"; then
             mv "${tmp}" "${TARGET}/package.json"
             log "Added ai-universe-living-blog as file: dependency"
           else
             rm -f "${tmp}"
-            warn "Could not update package.json — add manually: \"ai-universe-living-blog\": \"file:./node_modules/ai-universe-living-blog\""
+            warn "Could not update package.json — add manually: \"ai-universe-living-blog\": \"file:./.install-pkgs/ai-universe-living-blog\""
           fi
         else
           warn "jq not available — add manually to ${TARGET}/package.json:"
-          warn "  \"dependencies\": { \"ai-universe-living-blog\": \"file:./node_modules/ai-universe-living-blog\" }"
+          warn "  \"dependencies\": { \"ai-universe-living-blog\": \"file:./.install-pkgs/ai-universe-living-blog\" }"
         fi
       fi
     else

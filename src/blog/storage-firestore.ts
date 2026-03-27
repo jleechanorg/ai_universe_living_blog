@@ -21,7 +21,7 @@
  *   const storage = createStorage({ type: 'firestore', projectId: 'my-project' });
  */
 
-import { Firestore, CollectionReference, DocumentReference } from '@google-cloud/firestore';
+import { Firestore, CollectionReference } from '@google-cloud/firestore';
 import type {
   BlogStorage,
   Poster,
@@ -32,7 +32,7 @@ import type {
   ListThreadsParams,
   ListThreadsResult,
 } from '../shared/types.js';
-import { PosterSchema, encodeRepoKey } from '../shared/types.js';
+import { PosterSchema, PostSchema } from '../shared/types.js';
 import { logger } from '../shared/logger.js';
 
 export interface FirestoreStorageOptions {
@@ -47,7 +47,9 @@ export class FirestoreBlogStorage implements BlogStorage {
   private threadsCol: CollectionReference;
 
   constructor(opts: FirestoreStorageOptions = {}) {
-    const firestoreOpts: { projectId?: string } = {};
+    const firestoreOpts: { projectId?: string; ignoreUndefinedProperties?: boolean } = {
+      ignoreUndefinedProperties: true,
+    };
     if (opts.projectId) firestoreOpts.projectId = opts.projectId;
     this.db = new Firestore(firestoreOpts);
 
@@ -69,7 +71,15 @@ export class FirestoreBlogStorage implements BlogStorage {
 
   async createPoster(poster: Poster): Promise<void> {
     PosterSchema.parse(poster);
-    await this.postersCol.doc(poster.id).set(poster);
+    try {
+      await this.postersCol.doc(poster.id).create(poster);
+    } catch (err: unknown) {
+      // Firestore error code 6 = ALREADY_EXISTS — surface a clear error instead of silently clobbering
+      if ((err as { code?: number }).code === 6) {
+        throw new Error(`Poster already exists: ${poster.id}`);
+      }
+      throw err;
+    }
     logger.debug('Firestore: Poster created', { id: poster.id });
   }
 
@@ -77,14 +87,50 @@ export class FirestoreBlogStorage implements BlogStorage {
     const existing = await this.getPoster(poster.id);
     if (existing) return existing;
     const created: Poster = { ...poster, createdAt: new Date().toISOString() };
-    await this.createPoster(created);
-    return created;
+    try {
+      await this.createPoster(created);
+      return created;
+    } catch (err: unknown) {
+      // ALREADY_EXISTS means another concurrent call created the poster — return it
+      const raced = await this.getPoster(poster.id);
+      if (raced) return raced;
+      throw err;
+    }
   }
 
   // ─── Post ─────────────────────────────────────────────────────────────────
 
   async createPost(post: Post): Promise<Post> {
-    await this.postsCol.doc(post.id).set(post);
+    PostSchema.parse(post); // fail fast on malformed posts before durable write
+    // Wrap post write + thread-aggregate refresh in a transaction so concurrent
+    // post writes cannot clobber each other's postCount/latestPostAt.
+    await this.db.runTransaction(async (tx) => {
+      // Read thread doc first (before any writes) to determine if refresh is needed.
+      if (post.threadId) {
+        const snap = await tx.get(this.threadsCol.doc(post.threadId));
+        if (snap.exists) {
+          const posts = await tx.get(
+            this.postsCol.where('threadId', '==', post.threadId).orderBy('createdAt', 'asc'),
+          );
+          const latestExistingPostAt = posts.docs.at(-1)?.data().createdAt;
+          tx.set(
+            this.threadsCol.doc(post.threadId),
+            {
+              postCount: posts.size + 1,
+              latestPostAt:
+                latestExistingPostAt && new Date(latestExistingPostAt) > new Date(post.createdAt)
+                  ? latestExistingPostAt
+                  : post.createdAt,
+            },
+            { merge: true },
+          );
+        }
+        // Thread doesn't exist yet — skip refresh (non-fatal)
+      }
+      // Write the post last so it always succeeds even if thread refresh is skipped.
+      // Use tx.create() for duplicate-safe semantics (fails if post.id already exists).
+      tx.create(this.postsCol.doc(post.id), post);
+    });
     logger.debug('Firestore: Post created', { id: post.id });
     return post;
   }
@@ -98,14 +144,24 @@ export class FirestoreBlogStorage implements BlogStorage {
   async updatePost(id: string, updates: Partial<Post>): Promise<Post> {
     const existing = await this.getPost(id);
     if (!existing) throw new Error(`Post not found: ${id}`);
-    // id and repoKey are immutable — reject attempts to change them
+    // id, repoKey, and threadId are immutable — reject attempts to change them
     if (updates.id !== undefined && updates.id !== id) {
       throw new Error('Updating post id is not allowed');
     }
     if (updates.repoKey !== undefined && updates.repoKey !== existing.repoKey) {
       throw new Error('Updating post repoKey is not allowed');
     }
-    const updated: Post = { ...existing, ...updates, id, repoKey: existing.repoKey, updatedAt: new Date().toISOString() };
+    if (updates.threadId !== undefined && updates.threadId !== existing.threadId) {
+      throw new Error('Updating post threadId is not allowed');
+    }
+    const updated: Post = {
+      ...existing,
+      ...updates,
+      id,
+      repoKey: existing.repoKey,
+      threadId: existing.threadId,
+      updatedAt: new Date().toISOString(),
+    };
     await this.postsCol.doc(id).set(updated);
     return updated;
   }
@@ -132,6 +188,9 @@ export class FirestoreBlogStorage implements BlogStorage {
       const cursorDoc = await this.postsCol.doc(params.cursor).get();
       if (cursorDoc.exists) {
         q = query.startAfter(cursorDoc).limit(limit);
+      } else {
+        logger.warn('Firestore: Invalid cursor', { cursor: params.cursor });
+        return { posts: [], cursor: undefined };
       }
     }
 
@@ -158,23 +217,46 @@ export class FirestoreBlogStorage implements BlogStorage {
   }
 
   async createThread(thread: Thread): Promise<Thread> {
-    await this.threadsCol.doc(thread.id).set(thread);
+    try {
+      await this.threadsCol.doc(thread.id).create(thread);
+    } catch (err: unknown) {
+      // Firestore error code 6 = ALREADY_EXISTS — surface a clear error instead of silently clobbering
+      if ((err as { code?: number }).code === 6) {
+        throw new Error(`Thread already exists: ${thread.id}`);
+      }
+      throw err;
+    }
     logger.debug('Firestore: Thread created', { id: thread.id });
     return thread;
   }
 
   async updateThread(id: string, updates: Partial<Thread>): Promise<Thread> {
-    const existing = await this.getThread(id);
-    if (!existing) throw new Error(`Thread not found: ${id}`);
-    if (updates.id !== undefined && updates.id !== existing.id) {
-      throw new Error('Updating thread id is not allowed');
-    }
-    if (updates.repoKey !== undefined && updates.repoKey !== existing.repoKey) {
-      throw new Error('Updating thread repoKey is not allowed');
-    }
-    const updated: Thread = { ...existing, ...updates, id: existing.id, repoKey: existing.repoKey };
-    await this.threadsCol.doc(id).set(updated);
-    return updated;
+    let updated: Thread | undefined;
+    await this.db.runTransaction(async (tx) => {
+      const threadSnap = await tx.get(this.threadsCol.doc(id));
+      if (!threadSnap.exists) throw new Error(`Thread not found: ${id}`);
+      const existing = threadSnap.data() as Thread;
+      if (updates.id !== undefined && updates.id !== existing.id) {
+        throw new Error('Updating thread id is not allowed');
+      }
+      if (updates.repoKey !== undefined && updates.repoKey !== existing.repoKey) {
+        throw new Error('Updating thread repoKey is not allowed');
+      }
+      // Recompute postCount and latestPostAt from actual posts so aggregates are never stale.
+      const postsSnap = await tx.get(
+        this.postsCol.where('threadId', '==', id).orderBy('createdAt', 'asc'),
+      );
+      updated = {
+        ...existing,
+        ...updates,
+        id: existing.id,
+        repoKey: existing.repoKey,
+        postCount: postsSnap.size,
+        latestPostAt: postsSnap.docs.at(-1)?.data().createdAt ?? existing.latestPostAt,
+      };
+      tx.set(this.threadsCol.doc(id), updated);
+    });
+    return updated!;
   }
 
   async listThreads(params: ListThreadsParams): Promise<ListThreadsResult> {
@@ -192,6 +274,9 @@ export class FirestoreBlogStorage implements BlogStorage {
       const cursorDoc = await this.threadsCol.doc(params.cursor).get();
       if (cursorDoc.exists) {
         q = query.startAfter(cursorDoc).limit(limit);
+      } else {
+        logger.warn('Firestore: Invalid cursor', { cursor: params.cursor });
+        return { threads: [], cursor: undefined };
       }
     }
 

@@ -23,12 +23,15 @@ const HAS_EMULATOR = !!process.env['FIRESTORE_EMULATOR_HOST'];
 // Skip all tests if emulator is not running
 const firestoreIt = HAS_EMULATOR ? it : it.skip;
 
+// Unique collection name per test — guarantees isolation without needing per-doc cleanup
+let _testIdx = 0;
+
 describe('FirestoreBlogStorage', () => {
   let storage: BlogStorage;
 
   beforeEach(() => {
-    // Each test gets a fresh storage instance pointed at the emulator
-    storage = new FirestoreBlogStorage({ collection: 'test_posts' });
+    // Each test gets a unique collection so no test sees another test's data
+    storage = new FirestoreBlogStorage({ collection: `test_posts_${Date.now()}_${++_testIdx}` });
   });
 
   firestoreIt('creates and retrieves a poster', async () => {

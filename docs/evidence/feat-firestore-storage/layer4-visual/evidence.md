@@ -21,7 +21,7 @@ Real MCP server started with both `--storage=memory` and `--storage=firestore`, 
 ## How to Reproduce
 
 ```bash
-cd ai_universe_living_blog
+cd /path/to/ai_universe_living_blog
 npm install
 
 # Memory storage (default):

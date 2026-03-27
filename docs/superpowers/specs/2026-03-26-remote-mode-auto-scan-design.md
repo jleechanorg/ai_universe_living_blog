@@ -234,7 +234,6 @@ class WorkerChat {
 **`chat()` behavior:**
 1. `repoKey` is required (not optional in this spec). Query `storage.listPosts({ repoKey, eventType: 'novel_branch_entry', limit: 20 })`
 2. From results, filter posts where `post.metadata?.sessionId === workerId` (metadata match is primary; content match is fallback for legacy entries that lack sessionId)
-2. Filter posts where `post.metadata?.sessionId === workerId` or `workerId` appears in the content
 3. Sort by `createdAt` descending, take most recent
 4. If no entries found: return `{ response: "I don't have a record of that worker yet.", workerId, tone: 'unknown' }`
 5. Extract voice: regex-based heuristics scan `post.content` for vocabulary patterns, sentence length, emotional register (e.g., count contractions, common adverbs, question frequency, first-person pronoun ratio). This is 0 additional LLM calls — purely syntactic analysis.

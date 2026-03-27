@@ -76,7 +76,7 @@ const ALLOWED_ORIGINS = process.env['ALLOWED_ORIGINS']
   ?.split(',').map((o) => o.trim()).filter(Boolean)
   ?? (NODE_ENV === 'production'
     ? ['https://ai-universe-2025.web.app', 'https://ai-universe-2025.firebaseapp.com']
-    : true);
+    : '*');
 
 // ─── New config ───────────────────────────────────────────────────────────────
 
@@ -96,6 +96,7 @@ const AUTO_SCAN_INTERVAL_MS = (() => {
 const GITHUB_TOKEN = process.env['GITHUB_TOKEN'];
 const WEBHOOK_SECRET = process.env['WEBHOOK_SECRET'];
 const ANTHROPIC_API_KEY = process.env['ANTHROPIC_API_KEY'] ?? '';
+const ANTHROPIC_BASE_URL = process.env['ANTHROPIC_BASE_URL'] ?? 'https://api.anthropic.com';
 
 // ─── Express app factory ───────────────────────────────────────────────────────
 
@@ -133,7 +134,7 @@ export async function createBlogApp(): Promise<ReturnType<typeof express>> {
       validKeys.push({
         key: hashKey(API_KEY!),
         label: 'API_KEY',
-        scopes: ['user'],
+        scopes: ['read', 'write'],
         createdAt: new Date().toISOString(),
       });
       keysChanged = true;
@@ -193,7 +194,7 @@ export async function createBlogApp(): Promise<ReturnType<typeof express>> {
   // POST /mcp — MCP JSON-RPC endpoint
   app.post(
     '/mcp',
-    authEnabled ? [mcpLimiter, requireApiKey(DATA_DIR)] : [],
+    [mcpLimiter, ...(authEnabled ? [requireApiKey(DATA_DIR)] : [])],
     async (req: Request, res: Response) => {
       const body = req.body;
       if (typeof body !== 'object' || body === null) {
@@ -259,10 +260,10 @@ export async function createBlogApp(): Promise<ReturnType<typeof express>> {
   app.post('/webhook', webhookHandler);
 
   // POST /chat — WorkerChat
-  const chat = new WorkerChat(registry, storage, { anthropicKey: ANTHROPIC_API_KEY });
+  const chat = new WorkerChat(registry, storage, { anthropicKey: ANTHROPIC_API_KEY, baseURL: ANTHROPIC_BASE_URL });
   app.post(
     '/chat',
-    authEnabled ? [chatLimiter, requireApiKey(DATA_DIR)] : [],
+    [chatLimiter, ...(authEnabled ? [requireApiKey(DATA_DIR)] : [])],
     async (req: Request, res: Response) => {
       try {
         const { workerId, message, repoKey } = req.body as {

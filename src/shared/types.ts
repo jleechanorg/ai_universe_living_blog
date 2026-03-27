@@ -42,7 +42,8 @@ export const PosterSchema = z.object({
 
 // ─── Post ─────────────────────────────────────────────────────────────────────
 
-// Well-known event types used by AO workers (not exhaustive — any string is valid)
+// Well-known event types used by AO workers (not exhaustive — any non-empty string is valid).
+// Exported as a reference for callers and for IDE autocomplete; not enforced at runtime.
 export const KNOWN_EVENT_TYPES = [
   'pr_created',
   'pr_edited',
@@ -61,7 +62,7 @@ export const KNOWN_EVENT_TYPES = [
   'novel_top_level_edit',
 ] as const;
 
-export const PostEventTypeSchema = z.string();
+export const PostEventTypeSchema = z.string().min(1);
 export type PostEventType = string;
 
 export const PostMetadataSchema = z.object({

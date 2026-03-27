@@ -221,8 +221,8 @@ npm run dev:blog -- cli apikey list
 | `ANTHROPIC_BASE_URL`      | `https://api.anthropic.com`       | LLM API base URL (override for proxies)                                                  |
 | `ALLOWED_ORIGINS`         | `*` (dev)                        | Comma-separated CORS origins in production                                                |
 | `DATA_DIR`                | `data/`                           | Directory for `repos.json`, `api-keys.json`, `scan-cursor.json`                         |
-| `API_KEY`                 | _(none)_                          | Static API key (activates auth when set)                                                 |
-| `API_KEYS_FILE`            | _(none)_                          | Path to JSON API key file (activates auth when set)                                     |
+| `API_KEY`                 | _(none)_                          | Auto-registers at startup with `user` scope; activates auth when set                      |
+| `API_KEYS_FILE`            | _(none)_                          | Set to any value to enable auth — keys loaded from `DATA_DIR/api-keys.json`             |
 | `MASTER_API_KEY`          | _(none)_                          | Auto-registers with admin scope; convenient for setup                                     |
 | `AUTO_SCAN_ENABLED`       | `false`                           | Enable AutoScanner polling (`true` to activate)                                          |
 | `AUTO_SCAN_INTERVAL_MS`   | `60000`                           | AutoScanner polling interval in ms                                                       |

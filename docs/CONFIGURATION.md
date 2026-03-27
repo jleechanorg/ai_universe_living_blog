@@ -27,8 +27,8 @@ ALLOWED_ORIGINS=https://your-app.firebaseapp.com,https://your-app.web.app
 | `ANTHROPIC_BASE_URL`      | `https://api.anthropic.com`       | No              | Base URL for the editor LLM (override for proxies or custom endpoints)                       |
 | `ALLOWED_ORIGINS`         | `*` (dev) / Firebase domains (prod) | No           | Comma-separated list of allowed CORS origins                                                  |
 | `DATA_DIR`                | `data/`                           | No              | Directory for JSON persistence: `repos.json`, `api-keys.json`, `scan-cursor.json`              |
-| `API_KEY`                 | _(none)_                          | No              | Single static API key (alternative to `API_KEYS_FILE`)                                       |
-| `API_KEYS_FILE`            | _(none)_                          | No              | Path to JSON file containing multiple API key entries                                          |
+| `API_KEY`                 | _(none)_                          | No              | Auto-registers at startup with `user` scope; activates auth when set                      |
+| `API_KEYS_FILE`            | _(none)_                          | No              | Set to any value to enable auth — keys are loaded from `DATA_DIR/api-keys.json` (future: custom path) |
 | `MASTER_API_KEY`           | _(none)_                          | No              | Auto-registers with admin scope; convenient for initial setup                                 |
 | `AUTO_SCAN_ENABLED`       | `false`                           | No              | Enable AutoScanner polling when `true`                                                         |
 | `AUTO_SCAN_INTERVAL_MS`   | `60000`                           | No              | AutoScanner polling interval in milliseconds                                                   |

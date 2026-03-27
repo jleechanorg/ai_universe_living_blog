@@ -1227,3 +1227,23 @@ CR reviewed jc-905's push (2fa879c2) and posted new CHANGES_REQUESTED:
 - 0 open PRs, no new friction
 - Blog server manually verified working (create_post, list_posts, health all passing)
 
+
+## 2026-03-27 (eloop cycle)
+
+### Zero-touch rate: 67% (2/3 merged today)
+- #17 [agento] feat: open eventType to any string — zero-touch ✓
+- #18 [agento] feat: wire --storage=firestore flag — zero-touch ✓  
+- #20 docs: living blog refactor design + TDD roadmap — operator-merged (no [agento] prefix)
+
+### New friction points
+1. **Auto-merge not wired** (jleechan-514o) — `executeReaction()` calls `notifyHuman()` instead of `scm.mergePR()`. Root cause of all green PRs sitting unmerged. No lifecycle-worker on this repo handles merge.
+2. **PR #19 stuck** — `feat/remote-mode-auto-scan` has merge conflict + CHANGES_REQUESTED. No worker assigned.
+3. **PR tagging gap** — PR #20 merged without [agento] prefix (docs PR created in operator session).
+
+### Fixes dispatched
+- jc-949: Fix jleechan-514o — wire scm.mergePR() in lifecycle-manager.ts (agent-orchestrator)
+- jc-950: Fix PR #19 — address CR CHANGES_REQUESTED + resolve merge conflict (living blog)
+
+### Beads created
+- None new (jleechan-514o was pre-existing)
+

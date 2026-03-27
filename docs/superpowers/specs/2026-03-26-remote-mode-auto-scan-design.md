@@ -66,7 +66,7 @@ All files under `DATA_DIR` (default: `data/`):
 | File | Purpose |
 |---|---|
 | `repos.json` | RepoRegistry — array of RepoConfig |
-| `scan-cursor.json` | Last-seen event ID per repo `{ [repoKey]: eventId }` |
+| `scan-cursor.json` | Last-seen event ID and last daily-summary UTC date per repo `{ [repoKey]: { lastEventId: string; lastDailyDate: string } }` |
 | `api-keys.json` | API keys — `{ key: string (SHA-256 hash), label, scopes, createdAt, lastUsedAt }` |
 | `posts.jsonl` | Blog post persistence (existing) |
 
@@ -134,9 +134,10 @@ interface GHActivityPage {
   nextCursor?: string;
 }
 interface GHActivityEvent {
+  id: string;             // GitHub event ID (e.g., "12345678") — used for cursor
   type: string;           // 'PushEvent', 'PullRequestEvent', 'CheckRunEvent', etc.
   repo: string;           // 'owner/repo'
-  createdAt: string;      // ISO-8601
+  createdAt: string;      // ISO-8601 — fallback cursor value
   payload: Record<string, unknown>;
   actor?: { login: string };
 }
@@ -163,10 +164,10 @@ function createAutoScanner(
 3. Per repo:
    - Load cursor from `data/scan-cursor.json[repoKey]`
    - Call `github.listRecentActivity(owner, repo)` — REST
-   - Filter out events ≤ cursor
+   - Filter out events ≤ `lastEventId` for that repo
    - For each new event: determine post type from event type, auto-create Thread + Poster if needed, call `storage.createPost()`
    - Update cursor after full cycle
-4. After all repos: UTC date-crossing check — if `new Date().toISOString().slice(0,10)` differs from last run's date, trigger daily summary for repos with `novelDaily: true`
+4. After all repos: UTC date-crossing check — load `lastDailyDate` per repo from `scan-cursor.json`; if today's UTC date (`new Date().toISOString().slice(0,10)`) differs from `lastDailyDate`, trigger daily summary for repos with `novelDaily: true`, then update `lastDailyDate` to today
 
 **Event → PostType mapping:**
 - `PullRequestEvent` with action `opened` → `pr_created`
@@ -310,7 +311,7 @@ Uses `RepoRegistry` directly (no network). Exits 0 on success, non-zero on error
 1. Generate a random 32-byte hex string (64 hex chars) as the plaintext key
 2. Hash it with SHA-256 to get the stored value
 3. Load `data/api-keys.json`, append the new entry, save
-4. Return `{ key: plaintextKey, label, scopes, createdAt }` — **plaintext key is never stored or returned again**
+4. Return `{ key: plaintextKey, label, scopes, createdAt }` — **plaintext key is never stored or returned again**. The response itself IS the one-time display: callers must show it to the user immediately and tell them to save it. No separate warning mechanism — the plaintext key in the response body is the signal.
 5. Requires `admin` scope to invoke (or no auth in dev mode)
 
 **Response shape:**

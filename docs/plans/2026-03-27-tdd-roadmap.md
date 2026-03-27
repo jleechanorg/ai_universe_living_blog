@@ -1,7 +1,7 @@
 # TDD Roadmap — Living Blog Refactor
 **Date:** 2026-03-27
 **Based on:** `docs/plans/2026-03-27-living-blog-refactor-design.md`
-**Implementation order:** Phase 1 → Phase 2 → Phase 3 → Phase 4
+**Implementation order:** Phase 1 → Phase 2 → Phase 3 → Phase 4 → Phase 5
 
 Each phase is independently runnable and green before the next begins. All tests use Vitest.
 
@@ -221,7 +221,7 @@ Phase 4  tests/cli-mcp-e2e.test.ts                 (9 tests)
 Phase 5  tests/fifo/chat-fifo.test.ts              (5 tests)
 ```
 
-**Total: ~79 tests across 6 files.**
+**Total: ~79 tests across 7 files.**
 
 Each phase should be green before the next begins. If a later phase fails, fix in that phase's test file (not by changing earlier phases' passing tests).
 

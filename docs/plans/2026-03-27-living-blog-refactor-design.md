@@ -52,7 +52,7 @@ blog-cli branch-entry --session ao-832 --pr 42 --repo owner/repo [--sha abc123] 
 3. Decides what to generate: branch entry, milestone note, or no-op
 4. Runs the novel pipeline (raw generation + optional editor pass)
 5. Writes `novel/workers/{sessionId}.md`
-6. If `BLOG_SERVER_URL` is set: POSTs to MCP server
+6. If `--output=both` AND `BLOG_SERVER_URL` is set: POSTs to MCP server (best-effort — logs warning on failure, file is always written)
 
 **Parameters:**
 
@@ -73,8 +73,8 @@ blog-cli branch-entry --session ao-832 --pr 42 --repo owner/repo [--sha abc123] 
 4. `GitHubClient.getCheckRuns()` fetches CI check runs
 5. `GitHubClient.getReviews()` fetches review events
 6. Pipeline decides: generate entry? skip (already generated)?
-7. Write `novel/workers/{sessionId}-{YYYY-MM-DD}.md` (always, unless `--output=none`)
-8. If `BLOG_SERVER_URL` set: `create_post` via HTTP POST
+7. Write `novel/workers/{sessionId}.md` (always, unless `--output=none`)
+8. If `--output=both` AND `BLOG_SERVER_URL` is set: `create_post` via HTTP POST (best-effort — logs warning on failure)
 
 #### `daily-summary`
 
@@ -174,7 +174,7 @@ export class GitHubClient {
 
 | Variable | Default | Description |
 |---|---|---|
-| `BLOG_MCP_URL` | `http://localhost:8081` | MCP server base URL |
+| `BLOG_SERVER_URL` | `http://localhost:8081` | MCP server URL (CLI `--output=both` target) |
 | `BLOG_API_KEY` | — | API key for write scope |
 | `BLOG_API_KEY_FILE` | — | Path to file containing API key |
 | `NOVEL_WORKERS_DIR` | `novel/workers/` | Directory for worker entry files |
@@ -186,10 +186,20 @@ export class GitHubClient {
 3. `BLOG_API_KEY_FILE` env var (path to file with key)
 4. No auth (MCP server has no API key configured)
 
-**Key registration flow:**
-- `npm run dev:novel -- generate-key --label="my-worker"` → prints a new plaintext key + its SHA-256 hash
+**Key registration flow (via CLI):**
+- `blog-cli generate-key --label="my-worker"` → proxies to MCP `generate_api_key` tool, prints new plaintext key + its SHA-256 hash
 - Worker uses the plaintext key as `BLOG_API_KEY`
 - MCP server stores only the hash in `data/api-keys.json`
+
+**CLI `generate-key` command:**
+
+| Flag | Required | Description |
+|---|---|---|
+| `--label` | yes | Human-readable label for the key |
+| `--scopes` | no | Comma-separated scopes: `read,write,admin` (default: `read,write`) |
+| `--mcp-url` | no | MCP server URL (default: `BLOG_SERVER_URL` env or `http://localhost:8081`) |
+
+> **Note:** `generate_api_key` is also available directly via the MCP server tool for non-CLI callers.
 
 ---
 
@@ -221,7 +231,7 @@ DATA_DIR=/tmp/blog-data npm run dev:blog
 | `create_post` | write | Create a post, auto-creates thread for `pr_created` and `novel_*` |
 | `get_post` | read | Fetch a post by ID |
 | `list_posts` | read | List posts with cursor pagination + filters |
-| `update_post` | read | Update title, content, tags, status |
+| `update_post` | write | Update title, content, tags, or status of a post |
 | `get_thread` | read | Fetch a thread with all its posts |
 | `list_threads` | read | List threads with cursor pagination |
 

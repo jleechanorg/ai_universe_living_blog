@@ -26,12 +26,12 @@ Blog MCP Server (port 8081)
 │   get_thread, list_threads, health_check)
 │
 ├── New MCP tools
-│   ├── register_repo    — add a repo to the registry
-│   ├── unregister_repo  — remove a repo from the registry
-│   ├── list_repos       — list all registered repos
-│   ├── update_repo      — update repo config (modes, token, etc.)
-│   ├── generate_api_key — create a new API key (returns plaintext once)
-│   └── chat_worker      — chat with a worker character
+│   ├── register_repo    — add a repo to the registry (scope: write)
+│   ├── unregister_repo  — remove a repo from the registry (scope: admin)
+│   ├── list_repos       — list all registered repos (scope: read)
+│   ├── update_repo      — update repo config (modes, token, etc.) (scope: write)
+│   ├── generate_api_key — create a new API key (scope: admin)
+│   └── chat_worker      — chat with a worker character (scope: read)
 │
 ├── AutoScanner (background, setInterval)
 │   ├── Polls GitHub REST API for registered repos with autoScan:true
@@ -223,7 +223,7 @@ interface ChatOptions {
 
 class WorkerChat {
   constructor(registry: RepoRegistry, storage: BlogStorage, opts: ChatOptions);
-  async chat(workerId: string, message: string, repoKey?: string): Promise<{
+  async chat(workerId: string, message: string, repoKey: string): Promise<{
     response: string;
     workerId: string;
     tone: string;
@@ -232,7 +232,8 @@ class WorkerChat {
 ```
 
 **`chat()` behavior:**
-1. Query `storage.listPosts({ repoKey: repoKey ?? ALL_REGISTERED_REPOS, eventType: 'novel_branch_entry', limit: 10 })`
+1. `repoKey` is required (not optional in this spec). Query `storage.listPosts({ repoKey, eventType: 'novel_branch_entry', limit: 20 })`
+2. From results, filter posts where `post.metadata?.sessionId === workerId` (metadata match is primary; content match is fallback for legacy entries that lack sessionId)
 2. Filter posts where `post.metadata?.sessionId === workerId` or `workerId` appears in the content
 3. Sort by `createdAt` descending, take most recent
 4. If no entries found: return `{ response: "I don't have a record of that worker yet.", workerId, tone: 'unknown' }`
@@ -264,7 +265,7 @@ class WorkerChat {
 
 **New routes:**
 - `POST /webhook` — webhook receiver (no auth required — HMAC validated internally)
-- `POST /chat` — WorkerChat endpoint (auth required if API_KEY mode)
+- `POST /chat` — WorkerChat endpoint (auth required if API_KEY mode); body: `{ workerId, message, repoKey }` (repoKey required)
 
 **Rate limiting:**
 - `express-rate-limit`: 100 req/min per IP on `/mcp` and `/chat`

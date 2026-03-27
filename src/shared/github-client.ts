@@ -93,25 +93,45 @@ export class GitHubClient {
   /**
    * List recent public events for a repo.
    * Uses /repos/{owner}/{repo}/events (public endpoint, 300 req/hr unauthed).
-   * Sets nextCursor when the GitHub API returns a "next" Link header.
+   * Accumulates all pages and returns nextCursor when a subsequent page exists.
    */
   async listRecentActivity(owner: string, repo: string, perPage = 30): Promise<GHActivityPage> {
-    const { data, nextCursor } = await ghFetch<Array<Record<string, unknown>>>(
-      `/repos/${owner}/${repo}/events?per_page=${perPage}`,
-      this.token,
-    );
+    const allEvents: GHActivityEvent[] = [];
+    let page = 1;
+    let morePages = true;
 
-    const events: GHActivityEvent[] = data.map((e) => ({
-      id: String(e.id),
-      type: String(e.type),
-      repo: `${owner}/${repo}`,
-      createdAt: String(e.created_at ?? ''),
-      payload: ((e.payload as Record<string, unknown>) ?? {}) as Record<string, unknown>,
-      actor: e.actor
-        ? { login: String((e.actor as Record<string, unknown>).login) }
-        : undefined,
-    }));
-    return { events, nextCursor };
+    while (morePages) {
+      const { data, nextCursor } = await ghFetch<Array<Record<string, unknown>>>(
+        `/repos/${owner}/${repo}/events?per_page=${perPage}&page=${page}`,
+        this.token,
+      );
+
+      for (const e of data) {
+        allEvents.push({
+          id: String(e.id),
+          type: String(e.type),
+          repo: `${owner}/${repo}`,
+          createdAt: String(e.created_at ?? ''),
+          payload: ((e.payload as Record<string, unknown>) ?? {}) as Record<string, unknown>,
+          actor: e.actor
+            ? { login: String((e.actor as Record<string, unknown>).login) }
+            : undefined,
+        });
+      }
+
+      // If fewer results than perPage, this is the last page
+      if (data.length < perPage || !nextCursor) {
+        morePages = false;
+        // No next page — caller can continue from here when ready
+        return { events: allEvents, nextCursor: undefined };
+      }
+
+      page++;
+    }
+
+    // Loop exited via morePages=false without a return (shouldn't happen,
+    // but satisfies TypeScript's exhaustive-check); return what we have
+    return { events: allEvents, nextCursor: undefined };
   }
 
   /**
@@ -157,64 +177,113 @@ export class GitHubClient {
 
   /**
    * Get all commits for a PR.
+   * Accumulates all pages when results are paginated.
    */
   async getCommits(owner: string, repo: string, prNumber: number): Promise<GHCommit[]> {
-    const { data } = await ghFetch<Array<Record<string, unknown>>>(
-      `/repos/${owner}/${repo}/pulls/${prNumber}/commits`,
-      this.token,
-    );
+    const allCommits: GHCommit[] = [];
+    let page = 1;
+    let morePages = true;
 
-    return data.map((d) => {
-      const commit = d.commit as Record<string, unknown>;
-      const author = commit.author as Record<string, unknown>;
-      return {
-        sha: d.sha as string,
-        commit: {
-          message: commit.message as string,
-          author: {
-            name: (author?.name as string) ?? '',
-            date: (author?.date as string) ?? '',
+    while (morePages) {
+      const { data, nextCursor } = await ghFetch<Array<Record<string, unknown>>>(
+        `/repos/${owner}/${repo}/pulls/${prNumber}/commits?per_page=100&page=${page}`,
+        this.token,
+      );
+
+      for (const d of data) {
+        const commit = d.commit as Record<string, unknown>;
+        const author = commit.author as Record<string, unknown>;
+        allCommits.push({
+          sha: d.sha as string,
+          commit: {
+            message: commit.message as string,
+            author: {
+              name: (author?.name as string) ?? '',
+              date: (author?.date as string) ?? '',
+            },
           },
-        },
-      };
-    });
+        });
+      }
+
+      if (data.length < 100 || !nextCursor) {
+        morePages = false;
+      } else {
+        page++;
+      }
+    }
+
+    return allCommits;
   }
 
   /**
    * Get all check runs for a ref.
+   * Accumulates all pages when results are paginated.
    */
   async getCheckRuns(owner: string, repo: string, ref: string): Promise<GHCheckRun[]> {
-    const { data } = await ghFetch<Record<string, unknown>>(
-      `/repos/${owner}/${repo}/commits/${ref}/check-runs`,
-      this.token,
-    );
+    const allRuns: GHCheckRun[] = [];
+    let page = 1;
+    let morePages = true;
 
-    const checkRuns = (data.check_runs as Array<Record<string, unknown>>) ?? [];
-    return checkRuns.map((r) => ({
-      id: r.id as number,
-      name: r.name as string,
-      status: r.status as string,
-      conclusion: (r.conclusion as string) ?? null,
-      startedAt: (r.started_at as string) ?? null,
-      completedAt: (r.completed_at as string) ?? null,
-    }));
+    while (morePages) {
+      const { data, nextCursor } = await ghFetch<Record<string, unknown>>(
+        `/repos/${owner}/${repo}/commits/${ref}/check-runs?per_page=100&page=${page}`,
+        this.token,
+      );
+
+      const checkRuns = (data.check_runs as Array<Record<string, unknown>>) ?? [];
+      for (const r of checkRuns) {
+        allRuns.push({
+          id: r.id as number,
+          name: r.name as string,
+          status: r.status as string,
+          conclusion: (r.conclusion as string) ?? null,
+          startedAt: (r.started_at as string) ?? null,
+          completedAt: (r.completed_at as string) ?? null,
+        });
+      }
+
+      if (checkRuns.length < 100 || !nextCursor) {
+        morePages = false;
+      } else {
+        page++;
+      }
+    }
+
+    return allRuns;
   }
 
   /**
    * Get all reviews for a PR.
+   * Accumulates all pages when results are paginated.
    */
   async getReviews(owner: string, repo: string, prNumber: number): Promise<GHReview[]> {
-    const { data } = await ghFetch<Array<Record<string, unknown>>>(
-      `/repos/${owner}/${repo}/pulls/${prNumber}/reviews`,
-      this.token,
-    );
+    const allReviews: GHReview[] = [];
+    let page = 1;
+    let morePages = true;
 
-    return data.map((r) => ({
-      id: r.id as number,
-      user: { login: (r.user as Record<string, unknown>)?.login as string ?? '' },
-      state: r.state as string,
-      body: (r.body as string) ?? null,
-      submittedAt: (r.submitted_at as string) ?? null,
-    }));
+    while (morePages) {
+      const { data, nextCursor } = await ghFetch<Array<Record<string, unknown>>>(
+        `/repos/${owner}/${repo}/pulls/${prNumber}/reviews?per_page=100&page=${page}`,
+        this.token,
+      );
+
+      for (const r of data) {
+        allReviews.push({
+          id: r.id as number,
+          user: { login: (r.user as Record<string, unknown>)?.login as string ?? '' },
+          state: r.state as string,
+          body: (r.body as string) ?? null,
+          submittedAt: (r.submitted_at as string) ?? null,
+        });
+      }
+
+      if (data.length < 100 || !nextCursor) {
+        morePages = false;
+      } else {
+        page++;
+      }
+    }
+
+    return allReviews;
   }
 }

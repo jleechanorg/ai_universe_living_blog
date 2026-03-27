@@ -170,15 +170,14 @@ Proxies to the MCP server's `register_repo` tool if `BLOG_SERVER_URL` is set. Us
 The `GitHubClient` class in `src/shared/` (or `src/blog/github-client.ts`) is used by both the CLI and the MCP server's AutoScanner.
 
 ```typescript
-// src/shared/github-client.ts (moved from src/blog/github-client.ts)
-import { Octokit } from '@octokit/rest';
+// src/shared/github-client.ts
+// Uses native fetch (Node 18+). No external HTTP client dependency.
 
 export class GitHubClient {
-  constructor(token?: string) { ... }
+  constructor(private readonly token?: string) {}
 
   // For CLI: branch-entry
-  async getPREvents(owner: string, repo: string, prNumber: number): Promise<GHActivityEvent[]>
-  async getPRDetails(owner: string, repo: string, prNumber: number): Promise<GHPullRequest>
+  async getPR(owner: string, repo: string, prNumber: number): Promise<GHPullRequest>
   async getCommits(owner: string, repo: string, prNumber: number): Promise<GHCommit[]>
   async getCheckRuns(owner: string, repo: string, ref: string): Promise<GHCheckRun[]>
   async getReviews(owner: string, repo: string, prNumber: number): Promise<GHReview[]>

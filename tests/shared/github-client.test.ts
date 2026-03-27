@@ -5,19 +5,44 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 /** Records every fetch call so we can inspect arguments after the client runs. */
 const callTracker = {
   calls: [] as Array<{ url: string; options?: { headers?: Record<string, string> } }>,
-  mockData: null as unknown,
-  clear() { this.calls = []; this.mockData = null; },
-  setData(d: unknown) { this.mockData = d; },
+  /** Array of response bodies; each element = one API call's JSON body. */
+  mockQueue: null as null | unknown[],
+  /** Array of Link header strings; each element = one API call's Link header. */
+  linkQueue: null as null | (string | null)[],
+  clear() { this.calls = []; this.mockQueue = null; this.linkQueue = null; },
+  /**
+   * Convenience: queue a single response body (for single-page tests).
+   * Internally stores as [d] so setQueue logic works uniformly.
+   */
+  setData(d: unknown) { this.mockQueue = [d]; this.linkQueue = [null]; },
+  /**
+   * Queue N response bodies + N Link headers for multi-page tests.
+   * Each array element is one page's full JSON body (array of records).
+   * Link headers are paired by index.
+   */
+  setQueue(bodies: unknown[], linkHeaders: (string | null)[]) {
+    this.mockQueue = bodies;
+    this.linkQueue = linkHeaders;
+  },
 };
 
 vi.stubGlobal('fetch', async (url: string, options?: { headers?: Record<string, string> }) => {
   callTracker.calls.push({ url, options });
-  if (callTracker.mockData === null) {
-    throw new Error('No mock data set up for fetch call');
+
+  if (!callTracker.mockQueue || callTracker.mockQueue.length === 0) {
+    throw new Error('No mock responses queued');
   }
-  const data = callTracker.mockData;
-  callTracker.mockData = null; // consume one response per call
-  return { ok: true, status: 200, json: () => Promise.resolve(data), statusText: 'OK' } as unknown as Response;
+  const data = callTracker.mockQueue.shift();
+  const linkHeader = callTracker.linkQueue?.shift() ?? null;
+
+  return {
+    ok: true, status: 200,
+    json: () => Promise.resolve(data),
+    statusText: 'OK',
+    headers: {
+      get: (k: string) => (k === 'Link' && linkHeader !== null ? linkHeader : null),
+    },
+  } as unknown as Response;
 });
 
 // ─── Import after stub ─────────────────────────────────────────────────────────
@@ -60,7 +85,7 @@ describe('GitHubClient', () => {
   // ── listRecentActivity ─────────────────────────────────────────────────────────
 
   describe('listRecentActivity', () => {
-    it('returns formatted GHActivityEvent[]', async () => {
+    it('returns formatted GHActivityEvent[] with no nextCursor on last page', async () => {
       callTracker.setData([
         {
           id: '123', type: 'PullRequestEvent',
@@ -69,6 +94,7 @@ describe('GitHubClient', () => {
           actor: { login: 'bot-826' },
         },
       ]);
+      // No Link header → single page → nextCursor undefined
       const result = await new GitHubClient().listRecentActivity('owner', 'repo');
       expect(result.events).toHaveLength(1);
       expect(result.events[0]).toMatchObject({
@@ -79,12 +105,45 @@ describe('GitHubClient', () => {
         payload: { action: 'opened', number: 42 },
         actor: { login: 'bot-826' },
       });
+      expect(result.nextCursor).toBeUndefined();
     });
 
     it('passes per_page to the API', async () => {
       callTracker.setData([]);
       await new GitHubClient().listRecentActivity('owner', 'repo', 50);
       expect(callTracker.calls[0]!.url).toContain('per_page=50');
+    });
+
+    it('sets nextCursor when Link header indicates more pages', async () => {
+      // Page 1: full perPage → Link header points to page 2
+      const page1Events = Array.from({ length: 30 }, (_, i) => ({
+        id: String(i), type: 'PushEvent',
+        created_at: '2026-03-27T10:00:00Z',
+        payload: {},
+        actor: { login: 'worker1' },
+      }));
+      // Page 2: fewer items than perPage → last page (no more pagination)
+      const page2Events = [
+        { id: 'p2-1', type: 'PushEvent', created_at: '2026-03-27T11:00:00Z', payload: {}, actor: null },
+      ];
+
+      // setQueue: each body is one page's full JSON array (an array of records)
+      callTracker.setQueue(
+        [page1Events, page2Events],
+        [
+          '<https://api.github.com/repos/owner/repo/events?per_page=30&page=2>; rel="next"',
+          null, // last page — no Link header
+        ],
+      );
+
+      const result = await new GitHubClient().listRecentActivity('owner', 'repo', 30);
+
+      // Fetched 2 pages; page 2 had fewer than perPage → pagination stops
+      expect(callTracker.calls).toHaveLength(2);
+      expect(callTracker.calls[0]!.url).toContain('page=1');
+      expect(callTracker.calls[1]!.url).toContain('page=2');
+      expect(result.events).toHaveLength(31); // 30 + 1
+      expect(result.nextCursor).toBeUndefined(); // no more pages
     });
   });
 

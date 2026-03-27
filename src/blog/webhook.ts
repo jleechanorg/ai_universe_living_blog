@@ -14,6 +14,22 @@ import type { GitHubClient } from './github-client.js';
 import type { RepoRegistry } from './repo-registry.js';
 import { mapGitHubEventToPostType } from './scanner.js';
 
+// ─── X-GitHub-Event normalization ───────────────────────────────────────────────
+
+/**
+ * GitHub sends X-GitHub-Event as "pull_request", "check_run", etc.
+ * The scanner's mapGitHubEventToPostType expects the API format:
+ * "PullRequestEvent", "CheckRunEvent", etc. This function bridges the gap.
+ */
+function normalizeEventType(raw: string): string {
+  const map: Record<string, string> = {
+    pull_request: 'PullRequestEvent',
+    check_run: 'CheckRunEvent',
+    check_suite: 'CheckSuiteEvent',
+  };
+  return map[raw] ?? raw;
+}
+
 // ─── HMAC validation ────────────────────────────────────────────────────────────
 
 function validateHmac(secret: string, rawBody: string, signature: string): boolean {
@@ -101,8 +117,8 @@ async function handleWebhookEvent(
 export function createWebhookHandler(
   registry: RepoRegistry,
   storage: BlogStorage,
-  github: GitHubClient,
-  dataDir: string,
+  _github: GitHubClient,
+  _dataDir: string,
   webhookSecret?: string,
 ): (req: Request, res: Response) => Promise<void> {
   return async (req: Request, res: Response): Promise<void> => {
@@ -158,10 +174,12 @@ export function createWebhookHandler(
       }
     }
 
-    // Route event
+    // Route event — normalize X-GitHub-Event (e.g. "pull_request") to the
+    // GitHub API event type format (e.g. "PullRequestEvent") that
+    // mapGitHubEventToPostType expects.
     const eventId = deliveryId;
     const result = await handleWebhookEvent(
-      { type: eventType, id: eventId, payload },
+      { type: normalizeEventType(eventType), id: eventId, payload },
       repo,
       storage,
     );

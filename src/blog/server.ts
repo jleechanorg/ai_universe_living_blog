@@ -98,6 +98,18 @@ export async function createBlogApp(): Promise<ReturnType<typeof express>> {
   let validKeys: ApiKey[] = [];
   if (authEnabled) {
     validKeys = loadApiKeys(DATA_DIR);
+    let keysChanged = false;
+
+    if (API_KEY && !validKeys.some((k) => hashKey(API_KEY!) === k.key)) {
+      validKeys.push({
+        key: hashKey(API_KEY!),
+        label: 'API_KEY',
+        scopes: ['user'],
+        createdAt: new Date().toISOString(),
+      });
+      keysChanged = true;
+    }
+
     if (MASTER_API_KEY && !validKeys.some((k) => hashKey(MASTER_API_KEY!) === k.key)) {
       validKeys.push({
         key: hashKey(MASTER_API_KEY!),
@@ -105,9 +117,11 @@ export async function createBlogApp(): Promise<ReturnType<typeof express>> {
         scopes: ['admin'],
         createdAt: new Date().toISOString(),
       });
-      saveApiKeys(validKeys, DATA_DIR);
+      keysChanged = true;
       logger.info('MASTER_API_KEY auto-registered with admin scope');
     }
+
+    if (keysChanged) saveApiKeys(validKeys, DATA_DIR);
   }
 
   // Rate limiters — 100 req/min per IP

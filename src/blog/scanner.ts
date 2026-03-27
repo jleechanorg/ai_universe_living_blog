@@ -127,19 +127,19 @@ export function createAutoScanner(
     const repos = registry.list().filter((r) => r.enabled && r.modes.autoScan);
     if (repos.length === 0) return;
 
-    const cursor = loadCursor(dataDir);
-    let cursorChanged = false;
-
     for (const repo of repos) {
       const [owner, name] = repo.repoKey.split('/');
       if (!owner || !name) {
-        logger.warn('Invalid repoKey in registry', { repoKey: repo.repoKey });
+        logger.warn('scanner: invalid repoKey', { repoKey: repo.repoKey });
         continue;
       }
 
       github.listRecentActivity(owner, name, 30)
         .then(async (page) => {
+          // Load cursor fresh per-repo so concurrent handlers don't clobber each other
+          const cursor = loadCursor(dataDir);
           const prevId = cursor[repo.repoKey]?.lastEventId ?? '';
+          let cursorChanged = false;
 
           for (const event of page.events) {
             // Skip already-seen events — use BigInt for precision (GitHub IDs exceed Number.MAX_SAFE_INTEGER)
@@ -203,7 +203,7 @@ export function createAutoScanner(
             await storage.createPost(post);
             logger.info('scanner: created post', { repoKey: repo.repoKey, postType, eventId: event.id });
 
-            // Update cursor in memory
+            // Update cursor in memory — isolated per handler, saved at end
             if (!cursor[repo.repoKey] || event.id > cursor[repo.repoKey].lastEventId) {
               cursor[repo.repoKey] = {
                 lastEventId: event.id,

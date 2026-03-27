@@ -46,11 +46,24 @@ export function verifyKey(plaintext: string, storedHash: string): boolean {
 
 const API_KEYS_FILE = 'api-keys.json';
 
+function isApiKeyEntry(val: unknown): val is ApiKey {
+  if (typeof val !== 'object' || val === null) return false;
+  const o = val as Record<string, unknown>;
+  return (
+    typeof o['key'] === 'string' &&
+    typeof o['label'] === 'string' &&
+    Array.isArray(o['scopes']) &&
+    typeof o['createdAt'] === 'string'
+  );
+}
+
 export function loadApiKeys(dataDir: string): ApiKey[] {
   const file = join(dataDir, API_KEYS_FILE);
   try {
     const raw = readFileSync(file, 'utf-8');
-    return JSON.parse(raw) as ApiKey[];
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter(isApiKeyEntry);
   } catch {
     return [];
   }
@@ -104,10 +117,10 @@ export function requireApiKey(dataDir: string, requiredScope?: string) {
       return;
     }
 
-    // Persist lastUsedAt so keys can be tracked
+    // Persist lastUsedAt asynchronously so it doesn't block the response
     matched.lastUsedAt = new Date().toISOString();
     const updated = validKeys.map((k) => (k.key === matched.key ? matched : k));
-    saveApiKeys(updated, dataDir);
+    setImmediate(() => { try { saveApiKeys(updated, dataDir); } catch { /* best-effort */ } });
     res.locals.apiKey = matched;
     next();
   };

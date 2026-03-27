@@ -98,7 +98,7 @@ export async function createBlogApp(): Promise<ReturnType<typeof express>> {
   app.use(cors({ origin: ALLOWED_ORIGINS }));
 
   // ── Auth + rate limiting ─────────────────────────────────────────────────────
-  const authEnabled = !!(API_KEY || API_KEYS_FILE);
+  const authEnabled = !!(API_KEY || API_KEYS_FILE || MASTER_API_KEY);
   // Load keys at startup for MASTER_API_KEY registration only.
   // The middleware itself lazy-loads keys on every request so newly
   // generated keys (via generate_api_key) are recognized without restart.

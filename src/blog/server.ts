@@ -221,21 +221,23 @@ export async function createBlogApp(): Promise<ReturnType<typeof express>> {
         });
       }
 
-      // Scope enforcement: gate write/admin methods to keys with appropriate scopes.
-      // read scope satisfies all read-only methods; write scope satisfies write and read;
-      // admin scope satisfies all methods (admin > write > read).
+      // Scope enforcement: hierarchical — admin > write > read.
+      // admin covers all; write covers write+read; read covers read-only.
+      // If a key has only ['admin'] it still satisfies write and read requirements.
       const requiredScope = METHOD_SCOPES[method];
       if (authEnabled && requiredScope) {
-        const apiKey = res.locals.apiKey;
-        const scopes: string[] = apiKey?.scopes ?? [];
+        const scopes: string[] = res.locals.apiKey?.scopes ?? [];
         const hasAdmin = scopes.includes('admin');
-        const hasWrite = scopes.includes('write');
-        const hasRead = scopes.includes('read');
+        const hasWrite = scopes.includes('write') || hasAdmin;
+        const hasRead = scopes.includes('read') || hasWrite;
         if (requiredScope === 'admin' && !hasAdmin) {
           return res.json({ jsonrpc: '2.0', id, error: { code: -32603, message: `Forbidden: '${method}' requires admin scope` } });
         }
-        if (requiredScope === 'write' && !hasAdmin && !hasWrite) {
+        if (requiredScope === 'write' && !hasWrite) {
           return res.json({ jsonrpc: '2.0', id, error: { code: -32603, message: `Forbidden: '${method}' requires write scope` } });
+        }
+        if (requiredScope === 'read' && !hasRead) {
+          return res.json({ jsonrpc: '2.0', id, error: { code: -32603, message: `Forbidden: '${method}' requires read scope` } });
         }
       }
 

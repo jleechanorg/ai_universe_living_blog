@@ -26,6 +26,7 @@ describe('createStorage', () => {
   });
 
   skipIfNoEmulator('creates FirestoreBlogStorage when type=firestore', () => {
+    // Exercises the Firestore branch of createStorage so lazy-load regressions are caught.
     const storage = createStorage({ type: 'firestore', collection: 'test-factory-posts' });
     expect(storage).toBeInstanceOf(FirestoreBlogStorage);
   });

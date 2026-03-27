@@ -63,7 +63,14 @@ const API_KEY = process.env['API_KEY'];
 const API_KEYS_FILE = process.env['API_KEYS_FILE'];
 const MASTER_API_KEY = process.env['MASTER_API_KEY'];
 const AUTO_SCAN_ENABLED = process.env['AUTO_SCAN_ENABLED'] === 'true';
-const AUTO_SCAN_INTERVAL_MS = Number(process.env['AUTO_SCAN_INTERVAL_MS'] ?? '60000');
+const AUTO_SCAN_INTERVAL_MS = (() => {
+  const raw = process.env['AUTO_SCAN_INTERVAL_MS'] ?? '60000';
+  const n = Number(raw);
+  if (!Number.isInteger(n) || n < 1000) {
+    throw new Error(`Invalid AUTO_SCAN_INTERVAL_MS: ${raw} — must be an integer ≥ 1000ms`);
+  }
+  return n;
+})();
 const GITHUB_TOKEN = process.env['GITHUB_TOKEN'];
 const WEBHOOK_SECRET = process.env['WEBHOOK_SECRET'];
 const ANTHROPIC_API_KEY = process.env['ANTHROPIC_API_KEY'] ?? '';

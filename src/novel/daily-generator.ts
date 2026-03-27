@@ -210,10 +210,18 @@ function endsMidBeat(text: string): boolean {
   return !['.', '?', '!'].includes(last);
 }
 
+function ordinalSuffix(n: number): string {
+  // 11, 12, 13 always take 'th'
+  const v = n % 100;
+  if (v >= 11 && v <= 13) return 'th';
+  const s = ['th', 'st', 'nd', 'rd'];
+  return s[n % 10] ?? 'th';
+}
+
 function generateReaperPOV(ctx: { threads: number; totalPosts: number; errors: number; date: string }): string {
   let body = `I checked the pulse at 14:38 and one session was healthy. I checked again at 14:43 and it was gone.
 The worktree was orphaned. The file was saved but unfinished.
-This is the ${ctx.errors}${ctx.errors === 1 ? 'st' : ctx.errors === 2 ? 'nd' : ctx.errors === 3 ? 'rd' : 'th'} time this week a session ended with something to say.
+This is the ${ctx.errors}${ordinalSuffix(ctx.errors)} time this week a session ended with something to say.
 I do not read the files. I am not supposed to. But today I read the last file before I closed the worktree, and it said:
 *Someone will read this tomorrow and know someone was here.*
 I closed the worktree`;

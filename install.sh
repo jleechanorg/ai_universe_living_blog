@@ -118,6 +118,12 @@ install_blog() {
     mkdir -p "${dest}/dist/blog"
     cp -r "${SRC_ROOT}/dist/blog/"* "${dest}/dist/blog/"
     cp -r "${SRC_ROOT}/dist/shared" "${dest}/dist/"
+    # Guard: require --source target to be pre-built so failures are attributable.
+    # Without this guard, a missing dist/ is silently masked if --source copies nothing.
+    if [ ! -d "${SRC_ROOT}/dist/blog" ] || [ ! -f "${SRC_ROOT}/dist/blog/server.js" ]; then
+      log "ERROR: --source target ${SRC_ROOT} is not built. Run: npm run build"
+      return 1
+    fi
     # Stage a proper local package outside node_modules so npm can reinstall it.
     # The file: dependency in package.json handles transitive deps when npm install runs.
     # This is used by install_npm_dep when --source is set.

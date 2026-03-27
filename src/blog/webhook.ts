@@ -4,10 +4,9 @@
  * Validates HMAC-SHA-256 signature and routes events through the same
  * mapGitHubEventToPostType pipeline as AutoScanner.
  *
- * NOTE: The server must use a custom middleware BEFORE express.json() that
- * preserves the raw request body bytes (as req.rawBody) so GitHub's HMAC
- * signature can be validated against the exact bytes GitHub sent
- * (not a re-serialized JSON string). See server.ts RawBodyRequest middleware.
+ * NOTE: server.ts uses express.json({ verify }) to capture the raw request
+ * body bytes before JSON parsing and stores them as req.rawBody. The HMAC
+ * is validated against these exact bytes — NOT a re-serialized JSON string.
  */
 
 import { createHmac, timingSafeEqual } from 'crypto';
@@ -134,9 +133,8 @@ export function createWebhookHandler(
   webhookSecret?: string,
 ): (req: RawBodyRequest, res: Response) => Promise<void> {
   return async (req: RawBodyRequest, res: Response): Promise<void> => {
-    // Use req.rawBody (preserved before JSON parsing) to validate HMAC.
-    // If not available (server did not configure raw body middleware), fall back
-    // to re-serializing req.body — this is less secure but functional for testing.
+    // Use req.rawBody (captured by express.json verify callback before parsing)
+    // to validate HMAC against GitHub's exact signed bytes.
     const rawBody = req.rawBody ?? (typeof req.body === 'string' ? req.body : JSON.stringify(req.body));
     const signature = req.get('X-Hub-Signature-256') ?? '';
     const deliveryId = req.get('X-GitHub-Delivery') ?? uuidv4();

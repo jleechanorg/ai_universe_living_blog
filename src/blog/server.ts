@@ -87,15 +87,14 @@ export async function createBlogApp(): Promise<ReturnType<typeof express>> {
   app.use(cors({ origin: ALLOWED_ORIGINS }));
 
   // ── Capture raw body bytes before JSON parsing (for webhook HMAC) ────────
-  app.use((req: RawBodyRequest, _res: Response, next) => {
-    if (Buffer.isBuffer(req.body)) {
-      req.rawBody = req.body.toString('utf8');
-    }
-    next();
-  });
-
-  // ── JSON for all routes ────────────────────────────────────────────────────
-  app.use(express.json({ limit: '10mb' }));
+  // Use express.json verify callback to capture the exact raw bytes GitHub signed,
+  // before Express re-serializes them. This ensures HMAC validation is byte-exact.
+  app.use(express.json({
+    limit: '10mb',
+    verify(req: unknown, _res: unknown, buf: Buffer) {
+      (req as RawBodyRequest).rawBody = buf.toString('utf8');
+    },
+  } as Parameters<typeof express.json>[0]));
 
   // Health
   app.get('/health', (_req, res) => {

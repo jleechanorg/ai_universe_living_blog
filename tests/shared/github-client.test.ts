@@ -205,6 +205,26 @@ describe('GitHubClient', () => {
       expect(result[0]).toMatchObject({ sha: 'aaaa111', commit: { message: 'initial commit' } });
       expect(result[1]).toMatchObject({ sha: 'bbbb222', commit: { message: 'fix: null pointer' } });
     });
+
+    it('accumulates all pages', async () => {
+      const page1Commits = Array.from({ length: 100 }, (_, i) => ({
+        sha: `sha${i}`, commit: { message: `msg${i}`, author: { name: 'Claude', date: '2026-03-27T09:00:00Z' } },
+      }));
+      const page2Commits = [
+        { sha: 'sha-last', commit: { message: 'final commit', author: { name: 'Claude', date: '2026-03-27T12:00:00Z' } } },
+      ];
+      callTracker.setQueue(
+        [page1Commits, page2Commits],
+        [
+          '<https://api.github.com/repos/owner/repo/pulls/42/commits?per_page=100&page=2>; rel="next"',
+          null,
+        ],
+      );
+      const result = await new GitHubClient().getCommits('owner', 'repo', 42);
+      expect(callTracker.calls).toHaveLength(2);
+      expect(result).toHaveLength(101);
+      expect(result[100]).toMatchObject({ sha: 'sha-last' });
+    });
   });
 
   // ── getCheckRuns ────────────────────────────────────────────────────────────
@@ -222,6 +242,33 @@ describe('GitHubClient', () => {
       expect(result[0]).toMatchObject({ id: 1, name: 'Build', conclusion: 'success' });
       expect(result[1]).toMatchObject({ id: 2, name: 'Test Suite', conclusion: 'failure' });
     });
+
+    it('accumulates all pages', async () => {
+      const page1Runs = Array.from({ length: 100 }, (_, i) => ({
+        id: i + 1, name: `Check ${i + 1}`, status: 'completed',
+        conclusion: 'success', started_at: '2026-03-27T10:00:00Z', completed_at: '2026-03-27T10:05:00Z',
+      }));
+      const page2Runs = [
+        { id: 101, name: 'Final Check', status: 'completed', conclusion: 'success', started_at: '2026-03-27T10:00:00Z', completed_at: '2026-03-27T10:05:00Z' },
+      ];
+      callTracker.setQueue(
+        [{ check_runs: page1Runs }, { check_runs: page2Runs }],
+        [
+          '<https://api.github.com/repos/owner/repo/commits/abc123/check-runs?per_page=100&page=2>; rel="next"',
+          null,
+        ],
+      );
+      const result = await new GitHubClient().getCheckRuns('owner', 'repo', 'abc123');
+      expect(callTracker.calls).toHaveLength(2);
+      expect(result).toHaveLength(101);
+      expect(result[100]).toMatchObject({ id: 101, name: 'Final Check' });
+    });
+
+    it('encodes ref in URL path', async () => {
+      callTracker.setData({ check_runs: [] });
+      await new GitHubClient().getCheckRuns('owner', 'repo', 'feature/foo');
+      expect(callTracker.calls[0]!.url).toContain('commits/feature%2Ffoo/check-runs');
+    });
   });
 
   // ── getReviews ─────────────────────────────────────────────────────────────
@@ -236,6 +283,27 @@ describe('GitHubClient', () => {
       expect(result).toHaveLength(2);
       expect(result[0]).toMatchObject({ id: 100, state: 'APPROVED' });
       expect(result[1]).toMatchObject({ id: 101, state: 'CHANGES_REQUESTED' });
+    });
+
+    it('accumulates all pages', async () => {
+      const page1Reviews = Array.from({ length: 100 }, (_, i) => ({
+        id: i + 1, user: { login: `reviewer${i + 1}` }, state: 'COMMENTED',
+        body: null, submitted_at: '2026-03-27T12:00:00Z',
+      }));
+      const page2Reviews = [
+        { id: 101, user: { login: 'final-reviewer' }, state: 'APPROVED', body: 'LGTM', submitted_at: '2026-03-27T14:00:00Z' },
+      ];
+      callTracker.setQueue(
+        [page1Reviews, page2Reviews],
+        [
+          '<https://api.github.com/repos/owner/repo/pulls/42/reviews?per_page=100&page=2>; rel="next"',
+          null,
+        ],
+      );
+      const result = await new GitHubClient().getReviews('owner', 'repo', 42);
+      expect(callTracker.calls).toHaveLength(2);
+      expect(result).toHaveLength(101);
+      expect(result[100]).toMatchObject({ id: 101, state: 'APPROVED' });
     });
   });
 });

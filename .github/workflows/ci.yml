@@ -27,7 +27,9 @@ jobs:
         run: npm run build
 
       - name: Run tests
-        run: npm test
+        # Skip install smoke test — it requires a full npm-linked install and
+        # is tested separately in the install.sh authoring workflow.
+        run: npm test -- --exclude=tests/install.test.ts
 
       - name: Run agent harness validation
         run: python3 scripts/agent_repo_check.py

@@ -94,8 +94,13 @@ if [[ -z "${DRY_RUN}" ]]; then
   fi
 fi
 
-# Source root inside the cloned/local repo (repo root is at ${TEMP_DIR}/src/)
-SRC_ROOT="${TEMP_DIR}/src"
+# Source root: ${TEMP_DIR}/src for cloned repos (which clone into src/);
+# ${TEMP_DIR} for --source local repos (contents copied directly to ${TEMP_DIR}).
+if [[ -n "${SOURCE_DIR}" ]]; then
+  SRC_ROOT="${TEMP_DIR}"
+else
+  SRC_ROOT="${TEMP_DIR}/src"
+fi
 
 # ─── Install blog ─────────────────────────────────────────────────────────────
 install_blog() {

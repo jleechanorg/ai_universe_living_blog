@@ -216,7 +216,7 @@ The worktree was orphaned. The file was saved but unfinished.
 This is the ${ctx.errors}${ctx.errors === 1 ? 'st' : ctx.errors === 2 ? 'nd' : ctx.errors === 3 ? 'rd' : 'th'} time this week a session ended with something to say.
 I do not read the files. I am not supposed to. But today I read the last file before I closed the worktree, and it said:
 *Someone will read this tomorrow and know someone was here.*
-I closed the worktree.`;
+I closed the worktree`;
 
   if (endsMidBeat(body)) {
     body += '\n\n*TO BE CONTINUED*';

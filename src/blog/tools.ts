@@ -1,3 +1,4 @@
+import { randomBytes } from 'crypto';
 import { v4 as uuidv4 } from 'uuid';
 import { z } from 'zod';
 import type { BlogStorage, RepoKey } from '../shared/types.js';
@@ -10,6 +11,8 @@ import {
   type Thread,
 } from '../shared/types.js';
 import { logger } from '../shared/logger.js';
+import { RepoRegistry, type RepoConfig } from './repo-registry.js';
+import { hashKey, loadApiKeys, saveApiKeys, type ApiKey } from './auth.js';
 
 // ─── Tool parameter schemas ────────────────────────────────────────────────────
 
@@ -63,7 +66,54 @@ function toMcpError(message: string) {
 export interface BlogToolContext {
   storage: BlogStorage;
   agentId: string;
+  registry: RepoRegistry;
+  dataDir: string;
 }
+
+// ─── New tool schemas ─────────────────────────────────────────────────────────
+
+export const RegisterRepoParamsSchema = z.object({
+  repoKey: RepoKeySchema,
+  enabled: z.boolean().default(true),
+  githubToken: z.string().optional(),
+  webhookSecret: z.string().optional(),
+  modes: z.object({
+    autoScan: z.boolean().default(false),
+    novelBranch: z.boolean().default(false),
+    novelDaily: z.boolean().default(false),
+  }).optional(),
+  scanIntervalMs: z.number().int().positive().optional(),
+});
+
+export const UnregisterRepoParamsSchema = z.object({
+  repoKey: RepoKeySchema,
+});
+
+export const ListReposParamsSchema = z.object({});
+
+export const UpdateRepoParamsSchema = z.object({
+  repoKey: RepoKeySchema,
+  enabled: z.boolean().optional(),
+  modes: z.object({
+    autoScan: z.boolean().optional(),
+    novelBranch: z.boolean().optional(),
+    novelDaily: z.boolean().optional(),
+  }).optional(),
+  scanIntervalMs: z.number().int().positive().optional(),
+  githubToken: z.string().optional(),
+  webhookSecret: z.string().optional(),
+});
+
+export const GenerateApiKeyParamsSchema = z.object({
+  label: z.string().min(1),
+  scopes: z.array(z.enum(['read', 'write', 'admin'])).default(['read', 'write']),
+});
+
+export const ChatWorkerParamsSchema = z.object({
+  workerId: z.string().min(1),
+  message: z.string().min(1),
+  repoKey: RepoKeySchema,
+});
 
 /**
  * Blog MCP tools — each returns MCP-compatible { content, isError }.
@@ -278,6 +328,104 @@ export function createBlogToolHandlers(ctx: BlogToolContext) {
 
     async health_check() {
       return toMcpResult({ status: 'healthy', service: 'blog-mcp-server', version: '0.1.0' });
+    },
+
+    // ─── Repo management ──────────────────────────────────────────────────────
+
+    async register_repo(rawParams: unknown) {
+      try {
+        const params = await RegisterRepoParamsSchema.parseAsync(rawParams);
+        const now = new Date().toISOString();
+        const cfg: RepoConfig = {
+          repoKey: params.repoKey,
+          enabled: params.enabled,
+          githubToken: params.githubToken,
+          webhookSecret: params.webhookSecret,
+          modes: params.modes ?? { autoScan: false, novelBranch: false, novelDaily: false },
+          scanIntervalMs: params.scanIntervalMs,
+          createdAt: now,
+          updatedAt: now,
+        };
+        ctx.registry.register(cfg);
+        return toMcpResult({ success: true, repo: cfg });
+      } catch (err) {
+        return toMcpError(err instanceof z.ZodError
+          ? err.errors.map((e) => `${e.path.join('.')}: ${e.message}`).join('; ')
+          : String(err));
+      }
+    },
+
+    async unregister_repo(rawParams: unknown) {
+      try {
+        const { repoKey } = await UnregisterRepoParamsSchema.parseAsync(rawParams);
+        ctx.registry.unregister(repoKey);
+        return toMcpResult({ success: true });
+      } catch (err) {
+        return toMcpError(String(err));
+      }
+    },
+
+    async list_repos() {
+      return toMcpResult({ repos: ctx.registry.list() });
+    },
+
+    async update_repo(rawParams: unknown) {
+      try {
+        const params = await UpdateRepoParamsSchema.parseAsync(rawParams);
+        ctx.registry.update(params.repoKey, params);
+        const updated = ctx.registry.get(params.repoKey);
+        return toMcpResult({ success: true, repo: updated });
+      } catch (err) {
+        return toMcpError(String(err));
+      }
+    },
+
+    // ─── API key management ─────────────────────────────────────────────────
+
+    async generate_api_key(rawParams: unknown) {
+      try {
+        const params = await GenerateApiKeyParamsSchema.parseAsync(rawParams);
+        // Generate random 32-byte hex key (64 chars)
+        const plaintext = randomBytes(32).toString('hex');
+        const hashed = hashKey(plaintext);
+        const keys = loadApiKeys(ctx.dataDir);
+        const entry: ApiKey = {
+          key: hashed,
+          label: params.label,
+          scopes: params.scopes,
+          createdAt: new Date().toISOString(),
+        };
+        keys.push(entry);
+        saveApiKeys(keys, ctx.dataDir);
+        return toMcpResult({
+          key: plaintext,
+          label: entry.label,
+          scopes: entry.scopes,
+          createdAt: entry.createdAt,
+          warning: 'Store this key securely — it will not be shown again.',
+        });
+      } catch (err) {
+        return toMcpError(String(err));
+      }
+    },
+
+    // ─── Worker chat ────────────────────────────────────────────────────────
+
+    async chat_worker(rawParams: unknown) {
+      try {
+        const params = await ChatWorkerParamsSchema.parseAsync(rawParams);
+        // Lazy import to avoid circular dependency
+        const { WorkerChat } = await import('../novel/chat.js');
+        const anthropicKey = process.env['ANTHROPIC_API_KEY'] ?? '';
+        if (!anthropicKey) {
+          return toMcpError('ANTHROPIC_API_KEY is not set — WorkerChat requires it');
+        }
+        const chat = new WorkerChat(ctx.registry, ctx.storage, { anthropicKey });
+        const result = await chat.chat(params.workerId, params.message, params.repoKey);
+        return toMcpResult(result);
+      } catch (err) {
+        return toMcpError(String(err));
+      }
     },
   };
 }

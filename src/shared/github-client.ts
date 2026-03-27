@@ -1,11 +1,9 @@
 /**
- * GitHub REST Client — REST only, no GraphQL.
+ * GitHub REST Client — REST only, no GraphQL, no external dependencies.
  *
- * Shared by both the CLI (prompt provider) and the MCP server's AutoScanner.
- * Wraps @octokit/rest for all GitHub API calls.
+ * Uses native `fetch` (Node 18+). Shared by both the CLI (prompt provider)
+ * and the MCP server's AutoScanner.
  */
-
-import { Octokit } from '@octokit/rest';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -20,6 +18,7 @@ export interface GHActivityEvent {
 
 export interface GHActivityPage {
   events: GHActivityEvent[];
+  /** Populated when there is a next page (Link header present). */
   nextCursor?: string;
 }
 
@@ -58,49 +57,81 @@ export interface GHReview {
 
 // ─── GitHubClient ─────────────────────────────────────────────────────────────
 
-export class GitHubClient {
-  private readonly octokit: Octokit;
+const GH_API = 'https://api.github.com';
 
-  constructor(token?: string) {
-    this.octokit = new Octokit({ auth: token });
+interface GhFetchResult<T> {
+  data: T;
+  /** Extracted from Link header if present (cursor for next page). */
+  nextCursor?: string;
+}
+
+function parseLinkHeader(header: string | null): string | undefined {
+  if (!header) return undefined;
+  const match = header.match(/<[^>]*[?&]page=(\d+)[^>]*>;\s*rel="next"/);
+  return match ? String(match[1]) : undefined;
+}
+
+async function ghFetch<T>(path: string, token?: string): Promise<GhFetchResult<T>> {
+  const headers: Record<string, string> = {
+    Accept: 'application/vnd.github+json',
+    'X-GitHub-Api-Version': '2022-11-28',
+  };
+  if (token) headers['Authorization'] = `Bearer ${token}`;
+  const res = await fetch(`${GH_API}${path}`, { headers });
+  if (!res.ok) {
+    const text = await res.text().catch(() => res.statusText);
+    throw new Error(`GitHub API ${res.status} at ${path}: ${text}`);
   }
+  const data = await res.json() as T;
+  const nextCursor = parseLinkHeader(res.headers?.get('Link') ?? null);
+  return { data, nextCursor };
+}
+
+export class GitHubClient {
+  constructor(private readonly token?: string) {}
 
   /**
    * List recent public events for a repo.
    * Uses /repos/{owner}/{repo}/events (public endpoint, 300 req/hr unauthed).
-   * Authenticated requests get higher rate limits.
+   * Sets nextCursor when the GitHub API returns a "next" Link header.
    */
   async listRecentActivity(owner: string, repo: string, perPage = 30): Promise<GHActivityPage> {
-    const { data } = await this.octokit.rest.activity.listRepoEvents({
-      owner,
-      repo,
-      per_page: perPage,
-    });
-    const events: GHActivityEvent[] = (data as unknown as Array<Record<string, unknown>>).map((e) => ({
+    const { data, nextCursor } = await ghFetch<Array<Record<string, unknown>>>(
+      `/repos/${owner}/${repo}/events?per_page=${perPage}`,
+      this.token,
+    );
+
+    const events: GHActivityEvent[] = data.map((e) => ({
       id: String(e.id),
       type: String(e.type),
       repo: `${owner}/${repo}`,
       createdAt: String(e.created_at ?? ''),
-      payload: (e.payload ?? {}) as Record<string, unknown>,
+      payload: ((e.payload as Record<string, unknown>) ?? {}) as Record<string, unknown>,
       actor: e.actor
         ? { login: String((e.actor as Record<string, unknown>).login) }
         : undefined,
     }));
-    return { events };
+    return { events, nextCursor };
   }
 
   /**
    * Get a single commit by SHA.
    */
   async getCommit(owner: string, repo: string, sha: string): Promise<GHCommit> {
-    const { data } = await this.octokit.rest.repos.getCommit({ owner, repo, ref: sha });
+    const { data } = await ghFetch<Record<string, unknown>>(
+      `/repos/${owner}/${repo}/commits/${sha}`,
+      this.token,
+    );
+
+    const commit = data.commit as Record<string, unknown>;
+    const author = commit.author as Record<string, unknown>;
     return {
-      sha: data.sha,
+      sha: data.sha as string,
       commit: {
-        message: data.commit.message,
+        message: commit.message as string,
         author: {
-          name: data.commit.author?.name ?? '',
-          date: data.commit.author?.date ?? '',
+          name: (author?.name as string) ?? '',
+          date: (author?.date as string) ?? '',
         },
       },
     };
@@ -110,68 +141,80 @@ export class GitHubClient {
    * Get a single pull request by number.
    */
   async getPR(owner: string, repo: string, prNumber: number): Promise<GHPullRequest> {
-    const { data } = await this.octokit.rest.pulls.get({ owner, repo, pull_number: prNumber });
+    const { data } = await ghFetch<Record<string, unknown>>(
+      `/repos/${owner}/${repo}/pulls/${prNumber}`,
+      this.token,
+    );
+
     return {
-      number: data.number,
-      title: data.title,
-      state: data.state,
+      number: data.number as number,
+      title: data.title as string,
+      state: data.state as string,
       merged: Boolean(data.merged),
-      url: data.html_url,
+      url: data.html_url as string,
     };
   }
 
   /**
-   * Get all commits for a PR (used by CLI prompt provider).
+   * Get all commits for a PR.
    */
   async getCommits(owner: string, repo: string, prNumber: number): Promise<GHCommit[]> {
-    const { data } = await this.octokit.rest.pulls.listCommits({
-      owner,
-      repo,
-      pull_number: prNumber,
+    const { data } = await ghFetch<Array<Record<string, unknown>>>(
+      `/repos/${owner}/${repo}/pulls/${prNumber}/commits`,
+      this.token,
+    );
+
+    return data.map((d) => {
+      const commit = d.commit as Record<string, unknown>;
+      const author = commit.author as Record<string, unknown>;
+      return {
+        sha: d.sha as string,
+        commit: {
+          message: commit.message as string,
+          author: {
+            name: (author?.name as string) ?? '',
+            date: (author?.date as string) ?? '',
+          },
+        },
+      };
     });
-    return data.map((d) => ({
-      sha: d.sha,
-      commit: {
-        message: d.commit.message,
-        author: { name: d.commit.author?.name ?? '', date: d.commit.author?.date ?? '' },
-      },
-    }));
   }
 
   /**
-   * Get all check runs for a ref (used by CLI prompt provider).
+   * Get all check runs for a ref.
    */
   async getCheckRuns(owner: string, repo: string, ref: string): Promise<GHCheckRun[]> {
-    const { data } = await this.octokit.rest.checks.listForRef({
-      owner,
-      repo,
-      ref,
-    });
-    return data.check_runs.map((r) => ({
-      id: r.id,
-      name: r.name,
-      status: r.status,
-      conclusion: r.conclusion,
-      startedAt: r.started_at ?? null,
-      completedAt: r.completed_at ?? null,
+    const { data } = await ghFetch<Record<string, unknown>>(
+      `/repos/${owner}/${repo}/commits/${ref}/check-runs`,
+      this.token,
+    );
+
+    const checkRuns = (data.check_runs as Array<Record<string, unknown>>) ?? [];
+    return checkRuns.map((r) => ({
+      id: r.id as number,
+      name: r.name as string,
+      status: r.status as string,
+      conclusion: (r.conclusion as string) ?? null,
+      startedAt: (r.started_at as string) ?? null,
+      completedAt: (r.completed_at as string) ?? null,
     }));
   }
 
   /**
-   * Get all reviews for a PR (used by CLI prompt provider).
+   * Get all reviews for a PR.
    */
   async getReviews(owner: string, repo: string, prNumber: number): Promise<GHReview[]> {
-    const { data } = await this.octokit.rest.pulls.listReviews({
-      owner,
-      repo,
-      pull_number: prNumber,
-    });
+    const { data } = await ghFetch<Array<Record<string, unknown>>>(
+      `/repos/${owner}/${repo}/pulls/${prNumber}/reviews`,
+      this.token,
+    );
+
     return data.map((r) => ({
-      id: r.id,
-      user: { login: r.user?.login ?? '' },
-      state: r.state,
-      body: r.body ?? null,
-      submittedAt: r.submitted_at ?? null,
+      id: r.id as number,
+      user: { login: (r.user as Record<string, unknown>)?.login as string ?? '' },
+      state: r.state as string,
+      body: (r.body as string) ?? null,
+      submittedAt: (r.submitted_at as string) ?? null,
     }));
   }
 }

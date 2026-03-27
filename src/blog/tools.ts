@@ -66,8 +66,8 @@ function toMcpError(message: string) {
 export interface BlogToolContext {
   storage: BlogStorage;
   agentId: string;
-  registry: RepoRegistry;
-  dataDir: string;
+  registry?: RepoRegistry;
+  dataDir?: string;
 }
 
 // ─── New tool schemas ─────────────────────────────────────────────────────────
@@ -346,6 +346,7 @@ export function createBlogToolHandlers(ctx: BlogToolContext) {
           createdAt: now,
           updatedAt: now,
         };
+        if (!ctx.registry) return toMcpError('registry not available');
         ctx.registry.register(cfg);
         return toMcpResult({ success: true, repo: cfg });
       } catch (err) {
@@ -358,6 +359,7 @@ export function createBlogToolHandlers(ctx: BlogToolContext) {
     async unregister_repo(rawParams: unknown) {
       try {
         const { repoKey } = await UnregisterRepoParamsSchema.parseAsync(rawParams);
+        if (!ctx.registry) return toMcpError('registry not available');
         ctx.registry.unregister(repoKey);
         return toMcpResult({ success: true });
       } catch (err) {
@@ -366,13 +368,18 @@ export function createBlogToolHandlers(ctx: BlogToolContext) {
     },
 
     async list_repos() {
+      if (!ctx.registry) return toMcpError('registry not available');
       return toMcpResult({ repos: ctx.registry.list() });
     },
 
     async update_repo(rawParams: unknown) {
       try {
+        if (!ctx.registry) return toMcpError('registry not available');
         const params = await UpdateRepoParamsSchema.parseAsync(rawParams);
-        ctx.registry.update(params.repoKey, params);
+        ctx.registry.update(params.repoKey, {
+          ...params,
+          modes: params.modes ? { autoScan: false, novelBranch: false, novelDaily: false, ...params.modes } : undefined,
+        });
         const updated = ctx.registry.get(params.repoKey);
         return toMcpResult({ success: true, repo: updated });
       } catch (err) {
@@ -388,6 +395,7 @@ export function createBlogToolHandlers(ctx: BlogToolContext) {
         // Generate random 32-byte hex key (64 chars)
         const plaintext = randomBytes(32).toString('hex');
         const hashed = hashKey(plaintext);
+        if (!ctx.dataDir) return toMcpError('dataDir not available');
         const keys = loadApiKeys(ctx.dataDir);
         const entry: ApiKey = {
           key: hashed,
@@ -420,6 +428,7 @@ export function createBlogToolHandlers(ctx: BlogToolContext) {
         if (!anthropicKey) {
           return toMcpError('ANTHROPIC_API_KEY is not set — WorkerChat requires it');
         }
+        if (!ctx.registry) return toMcpError('registry not available');
         const chat = new WorkerChat(ctx.registry, ctx.storage, { anthropicKey });
         const result = await chat.chat(params.workerId, params.message, params.repoKey);
         return toMcpResult(result);

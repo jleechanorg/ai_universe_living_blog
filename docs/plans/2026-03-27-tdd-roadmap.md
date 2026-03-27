@@ -96,7 +96,7 @@ Each phase is independently runnable and green before the next begins. All tests
 
 ### Test file: `tests/blog/server-http.test.ts`
 
-**What it tests:** `src/blog/server.ts` — HTTP transport layer, JSON-RPC dispatch, auth middleware, rate limiting
+**What it tests:** `src/blog/server.ts` — HTTP transport layer, JSON-RPC dispatch, rate limiting
 
 **Setup:** Start Express app via `createBlogApp()` in test, use supertest to hit real HTTP.
 
@@ -108,12 +108,9 @@ Each phase is independently runnable and green before the next begins. All tests
 | 2 | `POST /mcp: unknown method returns error` | `{ method: 'nonexistent_method' }` → `200` with `jsonrpc error -32601` |
 | 3 | `POST /mcp: missing id returns error` | Request without `id` → `200` with `jsonrpc error -32600` |
 | 4 | `POST /mcp: malformed JSON → 400` | Non-JSON body → `400` |
-| 5 | `POST /mcp: auth required when API_KEY set` | No `X-API-Key` header → `401` |
-| 6 | `POST /mcp: valid API key passes` | Correct `X-API-Key` → `200` |
-| 7 | `POST /mcp: invalid API key → 401` | Wrong key → `401` |
-| 8 | `GET /health: returns without auth` | No auth on GET /health → `200` |
-| 9 | `rate limit: 101 requests/min → 429` | Send 101 requests in 1 min → `429` with `Retry-After` header |
-| 10 | `rate limit: chat_worker 11/min → 429` | 11 `chat_worker` calls in 1 min → `429` |
+| 5 | `GET /health: returns 200` | GET /health → `200` |
+| 6 | `rate limit: 101 requests/min → 429` | Send 101 requests in 1 min → `429` with `Retry-After` header |
+| 7 | `rate limit: chat_worker 11/min → 429` | 11 `chat_worker` calls in 1 min → `429` |
 
 ### Test file: `tests/blog/tools-integration.test.ts`
 
@@ -137,15 +134,13 @@ Each phase is independently runnable and green before the next begins. All tests
 | 12 | `get_thread: returns thread with posts sorted by createdAt` | Thread posts are in chronological order |
 | 13 | `get_thread: scoped by repoKey` | Thread from repo A → not returned when querying repo B |
 | 14 | `list_threads: filters by repoKey` | Only threads for the requested repo |
-| 15 | `chat_worker: returns error if ANTHROPIC_API_KEY missing` | No env key → error response |
-| 16 | `chat_worker: calls WorkerChat with correct args` | Mock `WorkerChat.chat` → called with `{ workerId, message, repoKey }` |
-| 17 | `chat_worker: returns { response, workerId, tone }` | WorkerChat response → MCP result shape |
-| 18 | `generate_api_key: returns plaintext + stores hash` | Call → plaintext key in response, SHA-256 hash in key store |
-| 19 | `generate_api_key: second call returns different key` | Two calls → two different plaintext keys |
-| 20 | `register_repo: adds repo to registry` | `register_repo` → repo appears in `list_repos` |
-| 21 | `register_repo: duplicate repo → error` | Same repo registered twice → error |
-| 22 | `unregister_repo: removes repo` | After unregister → not in `list_repos` |
-| 23 | `update_repo: changes enabled mode` | `update_repo({ enabled: false })` → reflects in `list_repos` |
+| 15 | `chat_worker: calls OPENCLAW_INFERENCE_URL when set` | Mock HTTP POST to inference URL, returns response |
+| 16 | `chat_worker: calls Anthropic when ANTHROPIC_API_KEY set and OPENCLAW_INFERENCE_URL absent` | Mock Anthropic API → returns response |
+| 17 | `chat_worker: regex-only fallback when no inference backend set` | No `ANTHROPIC_API_KEY` or `OPENCLAW_INFERENCE_URL` → deterministic response via voice extraction |
+| 18 | `register_repo: adds repo to registry` | `register_repo` → repo appears in `list_repos` |
+| 19 | `register_repo: duplicate repo → error` | Same repo registered twice → error |
+| 20 | `unregister_repo: removes repo` | After unregister → not in `list_repos` |
+| 21 | `update_repo: changes enabled mode` | `update_repo({ enabled: false })` → reflects in `list_repos` |
 
 **Pass condition:** All tests pass. `npx vitest run tests/blog/`
 
@@ -208,20 +203,20 @@ Each phase is independently runnable and green before the next begins. All tests
 ## Implementation order summary
 
 ```
-Phase 1  tests/shared/github-client.test.ts         (12 tests)
+Phase 1  tests/shared/github-client.test.ts         (9 tests)
            ↓
 Phase 2  tests/cli/parser.test.ts                   (14 tests)
          tests/cli/gh-client-integration.test.ts    (6 tests)
            ↓
-Phase 3  tests/blog/server-http.test.ts            (10 tests)
-         tests/blog/tools-integration.test.ts       (23 tests)
+Phase 3  tests/blog/server-http.test.ts             (7 tests)
+         tests/blog/tools-integration.test.ts       (21 tests)
            ↓
 Phase 4  tests/cli-mcp-e2e.test.ts                 (9 tests)
            ↓
 Phase 5  tests/fifo/chat-fifo.test.ts              (5 tests)
 ```
 
-**Total: ~79 tests across 7 files.**
+**Total: ~65 tests across 7 files.**
 
 Each phase should be green before the next begins. If a later phase fails, fix in that phase's test file (not by changing earlier phases' passing tests).
 

@@ -39,22 +39,64 @@ blog-cli chat --worker ao-832 --message "What was the hardest part?" --repo owne
 
 ### Commands
 
-#### `branch-entry` — self-sufficient, fetches GH events directly
+#### `branch-entry` — prompt provider, not generator
 
 ```bash
-blog-cli branch-entry --session ao-832 --pr 42 --repo owner/repo [--sha abc123] [--output=file]
+blog-cli branch-entry --session ao-832 --pr 42 --repo owner/repo [--sha abc123]
 ```
 
-**The CLI owns the full data pipeline.** Given only `--session`, `--pr`, `--repo`, it:
+**The CLI fetches GH events and writes a prompt file. AO workers generate entries themselves.**
 
 1. Reads `GITHUB_TOKEN` env var (required)
 2. Fetches PR events via GitHub REST API (pull request events, check runs, reviews, commits)
-3. Decides what to generate: branch entry, milestone note, or no-op
-4. Runs the novel pipeline (raw generation + optional editor pass)
-5. Writes `novel/workers/{sessionId}.md`
-6. If `--output=both` AND `BLOG_SERVER_URL` is set: POSTs to MCP server (best-effort — logs warning on failure, file is always written)
+3. Writes a structured prompt file at `~/.blog/prompts/{sessionId}.md`
+4. AO worker reads the prompt file, generates `novel/workers/{sessionId}.md` inline (using AO's own inference — no separate LLM call by the CLI)
+5. AO worker optionally POSTs to MCP server if `BLOG_SERVER_URL` is set
 
-**Parameters:**
+The CLI does **not** call any LLM. No `ANTHROPIC_API_KEY` is needed for `branch-entry`.
+
+**Prompt file format** (`~/.blog/prompts/{sessionId}.md`):
+
+```markdown
+# Branch Entry Prompt — {sessionId}
+
+## Context
+- Session: {sessionId}
+- PR: {prNumber}
+- Repo: {repoKey}
+- Branch: {branchName}
+- Author: {prAuthor}
+- Status: {open|merged|closed}
+
+## PR Title
+{title}
+
+## PR Body (first 500 chars)
+{body}
+
+## Events (chronological)
+- [{timestamp}] {event.type}: {event.description}
+- [...more events...]
+
+## Commits
+- {sha} — {message} — {author} — {date}
+
+## Check Runs
+- {name}: {conclusion} (duration: {duration})
+
+## Reviews
+- [{author}] {state} — "{body excerpt}"
+
+## Writing Instruction
+Write a ~600-word branch entry from the perspective of {sessionId}.
+Use a first-person collective voice ("we", "the cursor", "the branch").
+Incorporate: the actual commit messages, the PR title/body, the check results, and any review feedback.
+Ground every claim in the specific events above.
+Tag the entry with at least 2 story beads from: {available beads list}.
+Output path: novel/workers/{sessionId}.md
+```
+
+**CLI parameters:**
 
 | Flag | Required | Description |
 |---|---|---|
@@ -62,9 +104,7 @@ blog-cli branch-entry --session ao-832 --pr 42 --repo owner/repo [--sha abc123] 
 | `--pr` | yes | PR number (integer) |
 | `--repo` | yes | `owner/repo` |
 | `--sha` | no | Specific commit SHA to anchor the entry |
-| `--output` | no | `file` (default) / `both` / `none` |
-| `--voice` | no | `workers` (default) / `agents` / `minimal` |
-| `--config` | no | Path to `novel.config.json` |
+| `--output-dir` | no | Prompt output dir (default: `~/.blog/prompts/`) |
 
 **Output flow:**
 1. `GitHubClient.getPREvents()` fetches all events for the PR
@@ -72,9 +112,10 @@ blog-cli branch-entry --session ao-832 --pr 42 --repo owner/repo [--sha abc123] 
 3. `GitHubClient.getCommits()` fetches commit list for the PR
 4. `GitHubClient.getCheckRuns()` fetches CI check runs
 5. `GitHubClient.getReviews()` fetches review events
-6. Pipeline decides: generate entry? skip (already generated)?
-7. Write `novel/workers/{sessionId}.md` (always, unless `--output=none`)
-8. If `--output=both` AND `BLOG_SERVER_URL` is set: `create_post` via HTTP POST (best-effort — logs warning on failure)
+6. Assemble structured prompt file at `~/.blog/prompts/{sessionId}.md`
+7. Log: `Prompt written to ~/.blog/prompts/{sessionId}.md — AO worker will generate the entry`
+
+> **AO worker integration:** AO lifecycle hook reads the prompt file and passes it as input context to the AO worker. The worker generates the entry, writes it to `novel/workers/{sessionId}.md`, and (optionally) POSTs to MCP server.
 
 #### `daily-summary`
 
@@ -153,8 +194,8 @@ export class GitHubClient {
 |---|---|---|
 | `GITHUB_TOKEN` | yes (CLI) | GitHub personal access token |
 | `BLOG_SERVER_URL` | no | MCP server URL for `--output=both` (default: `http://localhost:8081`) |
-| `BLOG_API_KEY` | no | API key for MCP write operations |
 | `ANTHROPIC_API_KEY` | no | Required for editor pass |
+| `OPENCLAW_INFERENCE_URL` | no | Local inference URL for chat_worker (preferred) |
 
 ---
 
@@ -168,38 +209,7 @@ export class GitHubClient {
 | `both` | ✅ | ✅ (best-effort) |
 | `none` | ❌ | ❌ |
 
-**Best-effort MCP:** If the HTTP POST fails (server unreachable, auth error), the CLI logs a warning but does not fail. The file is the source of truth.
-
-### Config env vars
-
-| Variable | Default | Description |
-|---|---|---|
-| `BLOG_SERVER_URL` | `http://localhost:8081` | MCP server URL (CLI `--output=both` target) |
-| `BLOG_API_KEY` | — | API key for write scope |
-| `BLOG_API_KEY_FILE` | — | Path to file containing API key |
-| `NOVEL_WORKERS_DIR` | `novel/workers/` | Directory for worker entry files |
-| `BLOG_DATA_DIR` | `data/` | Blog data directory (used by MCP server) |
-
-**API key loading priority:**
-1. `--api-key` flag (not yet in design — see open questions)
-2. `BLOG_API_KEY` env var (plaintext — SHA-256 hashed before storage)
-3. `BLOG_API_KEY_FILE` env var (path to file with key)
-4. No auth (MCP server has no API key configured)
-
-**Key registration flow (via CLI):**
-- `blog-cli generate-key --label="my-worker"` → proxies to MCP `generate_api_key` tool, prints new plaintext key + its SHA-256 hash
-- Worker uses the plaintext key as `BLOG_API_KEY`
-- MCP server stores only the hash in `data/api-keys.json`
-
-**CLI `generate-key` command:**
-
-| Flag | Required | Description |
-|---|---|---|
-| `--label` | yes | Human-readable label for the key |
-| `--scopes` | no | Comma-separated scopes: `read,write,admin` (default: `read,write`) |
-| `--mcp-url` | no | MCP server URL (default: `BLOG_SERVER_URL` env or `http://localhost:8081`) |
-
-> **Note:** `generate_api_key` is also available directly via the MCP server tool for non-CLI callers.
+**Best-effort MCP:** If the HTTP POST fails (server unreachable), the CLI logs a warning but does not fail. The file is the source of truth.
 
 ---
 
@@ -223,32 +233,33 @@ DATA_DIR=/tmp/blog-data npm run dev:blog
 | `GET` | `/health` | Health check `{ status, timestamp, uptime }` |
 | `POST` | `/webhook` | GitHub webhook receiver (HMAC-SHA-256 validated) |
 
-### MCP tools (13 total)
+### MCP tools (12 total)
+
+All tools are open — no API key required.
 
 #### Blog post tools
-| Tool | Required scope | Description |
-|---|---|---|
-| `create_post` | write | Create a post, auto-creates thread for `pr_created` and `novel_*` |
-| `get_post` | read | Fetch a post by ID |
-| `list_posts` | read | List posts with cursor pagination + filters |
-| `update_post` | write | Update title, content, tags, or status of a post |
-| `get_thread` | read | Fetch a thread with all its posts |
-| `list_threads` | read | List threads with cursor pagination |
+| Tool | Description |
+|---|---|
+| `create_post` | Create a post, auto-creates thread for `pr_created` and `novel_*` |
+| `get_post` | Fetch a post by ID |
+| `list_posts` | List posts with cursor pagination + filters |
+| `update_post` | Update title, content, tags, or status of a post |
+| `get_thread` | Fetch a thread with all its posts |
+| `list_threads` | List threads with cursor pagination |
 
 #### Repo management tools
-| Tool | Required scope | Description |
-|---|---|---|
-| `register_repo` | admin | Register a repo for auto-scan or webhook |
-| `unregister_repo` | admin | Remove a repo registration |
-| `list_repos` | read | List all registered repos |
-| `update_repo` | admin | Update repo config (enabled, modes, token, secret) |
-| `generate_api_key` | admin | Create a new API key, returns plaintext once |
+| Tool | Description |
+|---|---|
+| `register_repo` | Register a repo for auto-scan or webhook |
+| `unregister_repo` | Remove a repo registration |
+| `list_repos` | List all registered repos |
+| `update_repo` | Update repo config (enabled, modes, token, secret) |
 
 #### Interactive tools
-| Tool | Required scope | Description |
-|---|---|---|
-| `chat_worker` | read | Chat with a fictional AI worker by session ID |
-| `health_check` | — | Returns `{ status: "ok", timestamp, uptime }` |
+| Tool | Description |
+|---|---|
+| `chat_worker` | Chat with a fictional AI worker by session ID |
+| `health_check` | Returns `{ status: "ok", timestamp, uptime }` |
 
 ### `chat_worker` tool
 
@@ -261,31 +272,19 @@ DATA_DIR=/tmp/blog-data npm run dev:blog
 }
 ```
 
-**How it works:**
-1. Fetch all `novel_branch_entry` posts for `workerId` in `repoKey`
-2. Extract voice via regex heuristics (avg sentence length, contractions, question density, first-person ratio, ellipsis, caps) — **zero LLM calls**
-3. Build a character-consistent system prompt from the extracted voice + story context
-4. Call Anthropic API (`/v1/messages`) with the system prompt + user message
-5. Return `{ response, workerId, tone }`
+**How it works (tried in order):**
 
-**Rate limiting:** 10 requests/minute per IP (via `express-rate-limit`). Returns `429` with `Retry-After` header on limit.
+1. **Local inference (preferred):** If `OPENCLAW_INFERENCE_URL` is set, POST to that URL with the system prompt + user message. No API key needed.
+2. **Remote/GCP inference:** If `ANTHROPIC_API_KEY` is set (and `OPENCLAW_INFERENCE_URL` is not), call Anthropic API (`/v1/messages`).
+3. **Regex-only fallback:** If neither backend is available, extract voice via regex heuristics and return a deterministic response. No inference — last resort.
 
-**Auth:** Requires `read` scope on the API key.
+**Return value:** `{ response, workerId, tone }`
 
-### Auth model
-
-- API keys: stored as **SHA-256 hashes only** (never plaintext)
-- Scopes: `read` (list_posts, get_post, get_thread, list_threads, chat_worker), `write` (create_post, update_post), `admin` (register_repo, unregister_repo, update_repo, generate_api_key)
-- `health_check` is always public (no auth required)
-- Auth is optional — enabled when `API_KEY` or `API_KEYS_FILE` env var is set
-- MASTER_API_KEY (env var, plaintext) bypasses all scope checks
-
-### Rate limiting
+### Rate limiting (IP-based)
 
 - Global: **100 requests/minute per IP** (read operations)
 - Write operations: **20 requests/minute per IP**
 - `chat_worker`: **10 requests/minute per IP**
-- Login: **5 requests/minute per IP** (generating keys)
 
 ---
 
@@ -388,8 +387,8 @@ In the AO agent config (or CLAUDE.md of the worker repo), add:
 chat_worker called
   ├─ FIFO exists? ──▶ write to FIFO, wait 5s for reply
   │                    ├─ Reply received? ──▶ return reply
-  │                    └─ Timeout / no reply? ──▶ WorkerChat fallback
-  └─ FIFO absent? ──▶ WorkerChat (Anthropic API + voice extraction)
+  │                    └─ Timeout / no reply? ──▶ simulated response (regex voice only, no LLM)
+  └─ FIFO absent? ──▶ simulated response (regex voice only)
 ```
 
 ### MCP server writes to FIFO
@@ -408,14 +407,12 @@ The `chat_worker` tool in `src/blog/tools.ts` delegates to `src/novel/chat.ts` w
 | `DATA_DIR` | `data/` | Blog data directory |
 | `STORAGE` | `memory` | `memory` or `firestore` |
 | `FIRESTORE_PROJECT_ID` | — | GCP project for Firestore |
-| `API_KEY` | — | Single API key (plaintext → stored as SHA-256 hash) |
-| `API_KEYS_FILE` | — | Path to API keys JSON (e.g. `data/api-keys.json`) |
-| `MASTER_API_KEY` | — | Admin bypass key (plaintext, timing-safe compared) |
 | `GITHUB_TOKEN` | — | GitHub REST API token for AutoScanner |
 | `WEBHOOK_SECRET` | — | GitHub webhook HMAC-SHA-256 secret |
 | `AUTO_SCAN_ENABLED` | `false` | Enable AutoScanner polling |
 | `AUTO_SCAN_INTERVAL_MS` | `60000` | Polling interval (ms) |
-| `ANTHROPIC_API_KEY` | — | Anthropic API key (required for `chat_worker`) |
+| `ANTHROPIC_API_KEY` | — | Anthropic API key (fallback for `chat_worker`) |
+| `OPENCLAW_INFERENCE_URL` | — | Local inference URL for `chat_worker` (preferred over `ANTHROPIC_API_KEY`) |
 
 ### CLI env vars (blog-cli)
 
@@ -423,19 +420,17 @@ The `chat_worker` tool in `src/blog/tools.ts` delegates to `src/novel/chat.ts` w
 |---|---|---|---|
 | `GITHUB_TOKEN` | yes | — | GitHub personal access token |
 | `BLOG_SERVER_URL` | no | `http://localhost:8081` | MCP server URL for `--output=both` |
-| `BLOG_API_KEY` | no | — | API key for MCP write operations |
 | `ANTHROPIC_API_KEY` | no | — | Required for editor pass |
+| `OPENCLAW_INFERENCE_URL` | no | — | Local inference URL for chat_worker (preferred) |
 | `NOVEL_WORKERS_DIR` | no | `novel/workers/` | Worker entry output directory |
 
 ---
 
 ## Open Questions
 
-1. **CLI API key flag:** Should `--api-key=<key>` be added to all CLI commands, or is `BLOG_API_KEY` env var sufficient?
-2. **FIFO delete on session end:** Should the MCP server delete the FIFO after a session ends, or leave it for diagnostics?
-3. **Demo mode output:** Should demo mode write to file (`novel/workers/demo-{...}.md`) or only to MCP?
-4. **Webhook vs auto-scan priority:** If a repo is registered with both webhook and auto-scan enabled, should events from the webhook be deduplicated against the auto-scan cursor?
-5. **AO lifecycle hook coexistence:** When both the CLI (`branch-entry`) and the GitHub Actions workflow (`novel-entry.yml`) could fire on the same event, should one be disabled? The CLI is meant to replace the GHA for AO repos.
+1. **FIFO delete on session end:** Should the MCP server delete the FIFO after a session ends, or leave it for diagnostics?
+2. **Webhook vs auto-scan priority:** If a repo is registered with both webhook and auto-scan enabled, should events from the webhook be deduplicated against the auto-scan cursor?
+3. **AO lifecycle hook coexistence:** When both the CLI (`branch-entry`) and the GitHub Actions workflow (`novel-entry.yml`) could fire on the same event, should one be disabled? The CLI is meant to replace the GHA for AO repos.
 
 ---
 
@@ -476,7 +471,7 @@ The `chat_worker` tool in `src/blog/tools.ts` delegates to `src/novel/chat.ts` w
     MemoryBlogStorage                    FirestoreBlogStorage
     (default, no-config)                  (production, GCP ADC)
               │
-              └── data/api-keys.json  (SHA-256 hashes)
+
               └── data/repos.json    (repo registry)
               └── data/scan-cursor.json (auto-scan cursor)
 ```

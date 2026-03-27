@@ -81,7 +81,7 @@ export const RegisterRepoParamsSchema = z.object({
     autoScan: z.boolean().default(false),
     novelBranch: z.boolean().default(false),
     novelDaily: z.boolean().default(false),
-  }).optional(),
+  }),
   scanIntervalMs: z.number().int().positive().optional(),
 });
 
@@ -341,7 +341,7 @@ export function createBlogToolHandlers(ctx: BlogToolContext) {
           enabled: params.enabled,
           githubToken: params.githubToken,
           webhookSecret: params.webhookSecret,
-          modes: params.modes ?? { autoScan: false, novelBranch: false, novelDaily: false },
+          modes: params.modes,
           scanIntervalMs: params.scanIntervalMs,
           createdAt: now,
           updatedAt: now,

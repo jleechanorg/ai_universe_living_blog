@@ -438,6 +438,7 @@ describe('Repo tools', () => {
     const result = await tools.register_repo({
       repoKey: 'dup-test/repo',
       enabled: true,
+      modes: { autoScan: false, novelBranch: false, novelDaily: false },
     });
     expect(result.isError).toBe(true);
     const parsed = parseResult(result);
@@ -468,6 +469,7 @@ describe('Repo tools', () => {
     await tools.register_repo({
       repoKey: 'jleechanorg/ai_universe_living_blog',
       enabled: true,
+      modes: { autoScan: false, novelBranch: false, novelDaily: false },
     });
 
     const result = await tools.update_repo({
@@ -485,8 +487,8 @@ describe('Repo tools', () => {
 
   // 19
   it('list_repos: returns all registered repos', async () => {
-    await tools.register_repo({ repoKey: 'repo/a', enabled: true });
-    await tools.register_repo({ repoKey: 'repo/b', enabled: false });
+    await tools.register_repo({ repoKey: 'repo/a', enabled: true, modes: { autoScan: false, novelBranch: false, novelDaily: false } });
+    await tools.register_repo({ repoKey: 'repo/b', enabled: false, modes: { autoScan: false, novelBranch: false, novelDaily: false } });
 
     const result = await tools.list_repos();
 

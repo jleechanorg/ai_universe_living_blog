@@ -56,6 +56,7 @@ Repo tools (no auth — open):
 - `unregister_repo` — remove a repo
 - `list_repos` — list all registered repos
 - `update_repo` — update repo settings (enabled, modes, tokens)
+- `generate_api_key` — generate a new API key for authorized access
 
 Worker chat:
 - `chat_worker` — character-consistent chat with fictional AI workers. Three inference backends tried in order: (1) `OPENCLAW_INFERENCE_URL` if set, (2) `ANTHROPIC_API_KEY` if set, (3) regex-only voice extraction fallback (no key required)

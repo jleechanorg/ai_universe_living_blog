@@ -144,8 +144,13 @@ export function createWebhookHandler(
     const repoConfig = registry.get(repo);
     const secret = repoConfig?.webhookSecret ?? webhookSecret ?? '';
 
-    // Validate HMAC — skip if no secret configured (dev mode)
-    if (secret && signature) {
+    // Validate HMAC — reject if a secret is configured but no signature was sent
+    if (secret) {
+      if (!signature) {
+        logger.warn('webhook: missing signature header', { repo, deliveryId });
+        res.status(400).json({ error: 'Missing X-Hub-Signature-256 header' });
+        return;
+      }
       if (!validateHmac(secret, rawBody, signature)) {
         logger.warn('webhook: invalid HMAC', { repo, deliveryId });
         res.status(400).json({ error: 'Invalid signature' });

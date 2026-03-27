@@ -142,8 +142,9 @@ export function createAutoScanner(
           const prevId = cursor[repo.repoKey]?.lastEventId ?? '';
 
           for (const event of page.events) {
-            // Skip already-seen events
-            if (event.id <= prevId) continue;
+            // Skip already-seen events — use BigInt for precision (GitHub IDs exceed Number.MAX_SAFE_INTEGER)
+            const prevNum = prevId ? BigInt(prevId) : BigInt(0);
+            if (BigInt(event.id) <= prevNum) continue;
 
             const postType = mapGitHubEventToPostType(event);
             if (!postType) continue;

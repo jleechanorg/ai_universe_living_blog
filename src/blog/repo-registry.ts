@@ -40,12 +40,18 @@ export class RepoRegistry {
     mkdirSync(dataDir, { recursive: true });
   }
 
-  /** Load all repos from disk (or empty array if file doesn't exist). */
+  /** Load all repos from disk. Backs up corrupt files so no data is silently lost. */
   private load(): RepoConfig[] {
     try {
       const raw = readFileSync(this.reposFile, 'utf-8');
       return RepoConfigSchema.array().parse(JSON.parse(raw)) as RepoConfig[];
-    } catch {
+    } catch (err) {
+      // Back up corrupt file so no data is silently lost, then return empty
+      try {
+        const corrupt = readFileSync(this.reposFile, 'utf-8');
+        const backup = this.reposFile + '.corrupt.' + Date.now();
+        writeFileSync(backup, corrupt, 'utf-8');
+      } catch { /* backup failed — nothing to save */ }
       return [];
     }
   }

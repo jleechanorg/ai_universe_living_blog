@@ -71,20 +71,31 @@ function parseLinkHeader(header: string | null): string | undefined {
   return match ? String(match[1]) : undefined;
 }
 
-async function ghFetch<T>(path: string, token?: string): Promise<GhFetchResult<T>> {
+async function ghFetch<T>(path: string, token?: string, timeoutMs = 10_000): Promise<GhFetchResult<T>> {
   const headers: Record<string, string> = {
     Accept: 'application/vnd.github+json',
     'X-GitHub-Api-Version': '2022-11-28',
   };
   if (token) headers['Authorization'] = `Bearer ${token}`;
-  const res = await fetch(`${GH_API}${path}`, { headers });
-  if (!res.ok) {
-    const text = await res.text().catch(() => res.statusText);
-    throw new Error(`GitHub API ${res.status} at ${path}: ${text}`);
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const res = await fetch(`${GH_API}${path}`, { headers, signal: controller.signal });
+    clearTimeout(timer);
+    if (!res.ok) {
+      const text = await res.text().catch(() => res.statusText);
+      throw new Error(`GitHub API ${res.status} at ${path}: ${text}`);
+    }
+    const data = await res.json() as T;
+    const nextCursor = parseLinkHeader(res.headers?.get('Link') ?? null);
+    return { data, nextCursor };
+  } catch (err) {
+    clearTimeout(timer);
+    if (err instanceof Error && err.name === 'AbortError') {
+      throw new Error(`GitHub API timeout after ${timeoutMs}ms at ${path}`);
+    }
+    throw err;
   }
-  const data = await res.json() as T;
-  const nextCursor = parseLinkHeader(res.headers?.get('Link') ?? null);
-  return { data, nextCursor };
 }
 
 export class GitHubClient {
@@ -226,7 +237,7 @@ export class GitHubClient {
 
     while (morePages) {
       const { data, nextCursor } = await ghFetch<Record<string, unknown>>(
-        `/repos/${owner}/${repo}/commits/${ref}/check-runs?per_page=100&page=${page}`,
+        `/repos/${owner}/${repo}/commits/${encodeURIComponent(ref)}/check-runs?per_page=100&page=${page}`,
         this.token,
       );
 

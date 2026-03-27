@@ -1004,3 +1004,29 @@ CR reviewed jc-905's push (2fa879c2) and posted new CHANGES_REQUESTED:
 - @coderabbitai review ping at 00:12Z
 - jc-910 at 38% ctx, monitoring
 
+
+---
+
+## 2026-03-27 00:22 cycle (UTC)
+
+### Zero-touch rate: 5/6 = 83% → unchanged
+
+### PR #7 — final state, waiting for CR APPROVED
+- head: 099c5a2217 ("docs: clarify evidence reproduction path" — 1 line change to evidence.md)
+- CI: all passing ✅ (Bugbot neutral, Novel Entry success), mergeable: clean ✅
+- CR reviews API: only DISMISSED states — no APPROVED ever recorded formally
+- CR comment 23:34Z: "I've already issued approvals at multiple commits including eeb50907"
+  - CR believes it has approved but formal review state wasn't recorded
+  - Likely cause: commit churn caused CR's APPROVED to never register before next push
+
+### CR approval gap — root cause
+- jc-910 pushed 4+ commits AFTER CR's last review cycle (6176e0fa06, c9a3bf95c7, 099c5a2217 + trigger)
+- Each push triggers CR to auto-dismiss its review
+- CR runs analysis again but posts TIP instead of new formal APPROVED
+- Result: infinite loop where CR thinks it approved but API shows no APPROVED
+
+### Actions
+- Final @coderabbitai review ping at 00:22Z on stable HEAD 099c5a2217
+- Sent jc-910: STAY IDLE, no more commits
+- jc-910 (39% ctx) instructed to merge when APPROVED
+

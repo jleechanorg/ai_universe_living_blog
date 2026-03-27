@@ -42,7 +42,8 @@ export const PosterSchema = z.object({
 
 // ─── Post ─────────────────────────────────────────────────────────────────────
 
-export const PostEventTypeSchema = z.enum([
+// Well-known event types used by AO workers (not exhaustive — any string is valid)
+export const KNOWN_EVENT_TYPES = [
   'pr_created',
   'pr_edited',
   'pr_reopened',
@@ -58,8 +59,10 @@ export const PostEventTypeSchema = z.enum([
   'novel_branch_entry',
   'novel_daily_summary',
   'novel_top_level_edit',
-]);
-export type PostEventType = z.infer<typeof PostEventTypeSchema>;
+] as const;
+
+export const PostEventTypeSchema = z.string();
+export type PostEventType = string;
 
 export const PostMetadataSchema = z.object({
   dayNumber: z.number().int().positive().optional(),

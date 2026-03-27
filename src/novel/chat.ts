@@ -7,7 +7,6 @@
  */
 
 import type { BlogStorage } from '../shared/types.js';
-import type { RepoRegistry } from '../blog/repo-registry.js';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -92,7 +91,6 @@ async function callAnthropic(
 
 export class WorkerChat {
   constructor(
-    private readonly _registry: RepoRegistry,
     private readonly _storage: BlogStorage,
     private readonly _opts: ChatOptions,
   ) {}

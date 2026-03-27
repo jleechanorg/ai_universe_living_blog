@@ -465,7 +465,7 @@ export function createBlogToolHandlers(ctx: BlogToolContext) {
           if (!ctx.registry) return toMcpError('registry not available — Tier 2 (Anthropic) requires registry');
           const { WorkerChat } = await import('../novel/chat.js');
           const baseURL = process.env['ANTHROPIC_BASE_URL'] ?? 'https://api.anthropic.com';
-          const chat = new WorkerChat(ctx.registry, ctx.storage, { anthropicKey, baseURL });
+          const chat = new WorkerChat(ctx.storage, { anthropicKey, baseURL });
           const result = await chat.chat(params.workerId, params.message, params.repoKey);
           return toMcpResult({ ...result, backend: 'anthropic' });
         }

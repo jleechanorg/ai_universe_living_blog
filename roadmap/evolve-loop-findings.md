@@ -1103,3 +1103,25 @@ CR reviewed jc-905's push (2fa879c2) and posted new CHANGES_REQUESTED:
 - No workers stuck or dead in this repo
 - No new friction
 
+
+---
+
+## 2026-03-27 01:15 cycle (UTC) — PR #16 surfaced
+
+### Zero-touch rate: unchanged (PR #16 not yet merged)
+
+### PR #16 — chore: add CI workflow (opened by jleechan directly)
+- branch: chore/add-ci-workflow, created 01:08Z
+- CI failing: "Test + Agent Harness Validation" — ERR_MODULE_NOT_FOUND in tests/install.test.ts
+- CR CHANGES_REQUESTED: pin action SHAs, add permissions block, add setup-python
+
+### Friction points
+1. CI workflow test failure — pre-existing ERR_MODULE_NOT_FOUND surfaced by new CI
+2. CR actionable: pin action SHAs + permissions + python version
+
+### Actions
+- Dispatched jc-910 (via tmux) to fix PR #16 CI + CR comments
+
+### Beads
+- No new beads (existing patterns)
+

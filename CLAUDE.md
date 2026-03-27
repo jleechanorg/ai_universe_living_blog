@@ -92,7 +92,7 @@ npm run dev:novel -- daily-summary \
 ## Key Design Decisions
 
 - **JSON dev storage**: zero Firebase credentials needed — `MemoryBlogStorage` is the default
-- **Storage factory**: swap to Firestore via `--storage=firestore` flag (blog server CLI arg or `STORAGE_TYPE` env var); `FirestoreBlogStorage` and `--storage` CLI wiring are implemented; requires `FIRESTORE_PROJECT_ID` for production or `FIRESTORE_EMULATOR_HOST` for local dev
+- **Storage factory**: swap to Firestore via `--storage=firestore` or `--storage firestore` flag (blog server CLI arg) or `STORAGE_TYPE` env var; `FirestoreBlogStorage` and `--storage` CLI wiring are implemented; set `FIRESTORE_PROJECT_ID` explicitly, or leave unset to infer via ADC (production) or `FIRESTORE_EMULATOR_HOST` (local dev)
 - **MCP over HTTP**: Express + JSON-RPC 2.0 — same pattern as `ai_universe_convo_mcp`
 - **Traceability + narrative**: branch entries prioritize traceability; daily summaries prioritize narrative quality
 - **Bead system**: 15 reusable story beads tracked across installments — add new beads to `beads.ts`
@@ -192,7 +192,7 @@ docs/evidence/<branch-name>/
 | `AGENT_ID` | `blog-mcp-server` | Agent ID for logging |
 | `ANTHROPIC_API_KEY` | — | Top-level editor + chat_worker Tier 2 (Tier 3 regex fallback works without it) |
 | `STORAGE_TYPE` | `memory` | Blog storage: `memory` (default) or `firestore` |
-| `FIRESTORE_PROJECT_ID` | — | GCP project ID for Firestore (required when `STORAGE_TYPE=firestore`) |
+| `FIRESTORE_PROJECT_ID` | — | GCP project ID for Firestore (set explicitly, or inferred via ADC/emulator when available) |
 | `FIRESTORE_COLLECTION` | `posts` | Firestore collection prefix |
 | `FIRESTORE_EMULATOR_HOST` | — | Firestore emulator host (host:port) for local dev; used when `STORAGE_TYPE=firestore` |
 | `ANTHROPIC_BASE_URL` | `https://api.anthropic.com` | Editor LLM base URL |

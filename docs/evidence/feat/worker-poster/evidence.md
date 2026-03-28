@@ -81,6 +81,11 @@ Returns the created post, confirming full round-trip.
 ## Layer 4 — Visual Evidence
 
 - `layer4-visual/01-unit-tests.png` — screenshot of unit tests passing
+- `layer4-visual/02-server-startup.png` — Blog MCP server startup log (port 8081, MemoryBlogStorage initialized)
+- `layer4-visual/03-health-check.png` — `curl http://localhost:8081/health` → `{"status":"ok","service":"blog-mcp-server"}`
+- `layer4-visual/04-mcp-tool-call.png` — MCP `create_post` and `list_posts` tool calls → `isError: false`
+
+*(Retroactive L4 MCP evidence added 2026-03-28)*
 
 ---
 

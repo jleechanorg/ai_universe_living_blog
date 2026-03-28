@@ -5,18 +5,14 @@ Real MCP server started with both `--storage=memory` and `--storage=firestore`, 
 
 ## Evidence Files
 
-### Startup Logs
-- `04-server-memory-startup.log` — Server started with `PORT=8083 node --import tsx src/blog/server.ts --storage=memory`; logs `"storage":"memory"` and `MemoryBlogStorage initialized (zero-config dev mode)`
-- `05-server-firestore-startup.log` — Server started with `PORT=8083 FIRESTORE_PROJECT_ID=evidence-test node --import tsx src/blog/server.ts --storage=firestore`; logs `"storage":"firestore"` and `FirestoreBlogStorage initialized`
-
 ### HTTP Endpoint Responses
 - `01-health-check.json` — `GET /health` returns `{"status":"ok","service":"blog-mcp-server","version":"0.1.0"}`
 - `02-create-post.json` — `POST /mcp` with `create_post` tool; returns `{"success":true,"post":{...}}` with post ID, threadId, slug
 - `03-list-posts.json` — `POST /mcp` with `list_posts` tool; returns paginated post list
 
 ### Screenshots
-- `06-screenshot-memory.png` — Terminal capture showing `--storage=memory` server startup
-- `07-screenshot-firestore.png` — Terminal capture showing `--storage=firestore` server startup
+- `06-screenshot-memory.png` — Terminal capture showing `--storage=memory` server startup; log shows `"storage":"memory"` and `MemoryBlogStorage initialized (zero-config dev mode)`
+- `07-screenshot-firestore.png` — Terminal capture showing `--storage=firestore` server startup; log shows `"storage":"firestore"` and `FirestoreBlogStorage initialized`
 
 ## How to Reproduce
 
@@ -37,7 +33,8 @@ PORT=8083 STORAGE_TYPE=firestore FIRESTORE_PROJECT_ID=my-project node --import t
 ```
 
 ## Proof of Real App
-The log files and JSON responses prove:
+
+The screenshots and JSON responses prove:
 1. `--storage=memory` starts `MemoryBlogStorage` (zero-config, no Firebase)
 2. `--storage=firestore` starts `FirestoreBlogStorage` (connects to Firestore)
 3. `/health` returns structured JSON

@@ -54,6 +54,11 @@ Same test suite covers integration paths for:
 1. **`01-unit-tests-passing.png`** — Terminal showing `npm test` output
 2. **`02-workflow-file.png`** — `.github/workflows/novel-entry.yml` displayed
 3. **`03-novel-cli-success.png`** — Successful `branch-entry` pipeline output
+4. **`04-server-startup.png`** — Blog MCP server startup log (port 8081, MemoryBlogStorage initialized)
+5. **`05-health-check.png`** — `curl http://localhost:8081/health` → `{"status":"ok","service":"blog-mcp-server"}`
+6. **`06-mcp-tool-call.png`** — MCP `create_post` and `list_posts` tool calls → `isError: false`
+
+*(Retroactive L4 evidence added 2026-03-28)*
 
 ## Hook Verification
 

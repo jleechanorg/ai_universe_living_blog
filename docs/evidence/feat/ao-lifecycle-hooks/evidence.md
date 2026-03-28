@@ -58,7 +58,7 @@ Same test suite covers integration paths for:
 5. **`05-health-check.png`** — `curl http://localhost:8081/health` → `{"status":"ok","service":"blog-mcp-server"}`
 6. **`06-mcp-tool-call.png`** — MCP `create_post` and `list_posts` tool calls → `isError: false`
 
-*(Retroactive L4 MCP evidence added 2026-03-28)*
+*(Retroactive L4 evidence added 2026-03-28)*
 
 ## Hook Verification
 

@@ -87,8 +87,6 @@ Returns the created post, confirming full round-trip.
 
 *(Retroactive L4 MCP evidence added 2026-03-28)*
 
----
-
 ## Files Changed
 
 - `src/hooks/worker-poster.ts` — new: `postEvent()` function (sha256: `e9ecfb05a0...`)

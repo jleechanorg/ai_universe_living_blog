@@ -183,6 +183,15 @@ export class MemoryBlogStorage implements BlogStorage {
     return updated;
   }
 
+  /** Internal snapshot for FileBlogStorage flush — not part of BlogStorage interface. */
+  _dump(): { posters: Poster[]; threads: Thread[]; posts: Post[] } {
+    return {
+      posters: Array.from(this.posters.values()),
+      threads: Array.from(this.threads.values()),
+      posts: Array.from(this.posts.values()),
+    };
+  }
+
   async listThreads(params: ListThreadsParams): Promise<ListThreadsResult> {
     const repoKeyEnc = encodeRepoKey(params.repoKey);
     const threadIds = this.repoThreads.get(repoKeyEnc) ?? new Set<string>();

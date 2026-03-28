@@ -45,14 +45,15 @@ const getPort = () => {
 };
 
 // Storage factory — reads --storage CLI flag or STORAGE_TYPE env var.
-// Defaults to 'memory' so zero-config local dev works out of the box.
+// Defaults to 'file' (./blog-data.json) — zero-config local persistence without any external services.
+// Use STORAGE_TYPE=memory for ephemeral in-process storage, STORAGE_TYPE=firestore for GCP.
 const STORAGE_TYPE = (() => {
   // Check --storage=xxx or --storage xxx in process.argv
   const eqFlag = process.argv.find((a) => a.startsWith('--storage='));
   if (eqFlag) return eqFlag.split('=')[1]!;
   const idx = process.argv.findIndex((a) => a === '--storage');
   if (idx !== -1 && idx + 1 < process.argv.length) return process.argv[idx + 1]!;
-  return process.env['STORAGE_TYPE'] ?? 'memory';
+  return process.env['STORAGE_TYPE'] ?? 'file';
 })();
 
 const STORAGE_PROJECT_ID = process.env['FIRESTORE_PROJECT_ID'];
@@ -71,7 +72,7 @@ const ALLOWED_ORIGINS = process.env['ALLOWED_ORIGINS']
 
 export async function createBlogApp(): Promise<ReturnType<typeof express>> {
   const storage = createStorage({
-    type: STORAGE_TYPE as 'memory' | 'firestore',
+    type: STORAGE_TYPE as 'memory' | 'file' | 'firestore',
     projectId: STORAGE_PROJECT_ID,
     collection: STORAGE_COLLECTION,
   });

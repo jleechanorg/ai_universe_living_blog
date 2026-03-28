@@ -482,7 +482,7 @@ const storage = createStorage({ type: 'firestore', projectId: 'my-project' });
 **CLI flag**: pass `--storage=firestore` to `npm run dev:blog` or the novel CLI to activate Firestore:
 
 ```bash
-STORAGE=firestore npm run dev:blog
+STORAGE_TYPE=firestore npm run dev:blog
 npm run dev:novel -- branch-entry --repo=owner/repo --session=ao-826 --branch=feat/x --storage=firestore
 ```
 
@@ -583,7 +583,7 @@ The install script:
 | `PORT` | `8081` | Blog MCP server HTTP port |
 | `NODE_ENV` | `development` | `production` enables stricter CORS |
 | `AGENT_ID` | `blog-mcp-server` | Agent identifier in log output |
-| `STORAGE` | `memory` | `memory` or `firestore` |
+| `STORAGE_TYPE` | `memory` | `memory` or `firestore` |
 | `FIRESTORE_PROJECT_ID` | _(none)_ | GCP project for Firestore storage |
 | `FIRESTORE_EMULATOR_HOST` | _(none)_ | Firestore emulator address (local dev) |
 | `ANTHROPIC_API_KEY` | _(none)_ | Top-level editor + chat_worker Tier 2 (Tier 3 regex-only works without it) |
@@ -718,7 +718,7 @@ If `ANTHROPIC_API_KEY` is not set, the top-level editor pass logs a warning and 
 
 ### Storage is pluggable
 
-`BlogStorage` is a TypeScript interface. `MemoryBlogStorage` (dev) and `FirestoreBlogStorage` (prod) are the two provided implementations. Swap via `--storage=firestore` CLI flag or `STORAGE=firestore` env var. Implement `BlogStorage` to add any other backend.
+`BlogStorage` is a TypeScript interface. `MemoryBlogStorage` (dev) and `FirestoreBlogStorage` (prod) are the two provided implementations. Swap via `--storage=firestore` CLI flag or `STORAGE_TYPE=firestore` env var. Implement `BlogStorage` to add any other backend.
 
 ### Story beads ensure narrative continuity
 

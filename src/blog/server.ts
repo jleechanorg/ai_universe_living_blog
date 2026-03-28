@@ -72,11 +72,19 @@ const STORAGE_TYPE = (() => {
 const STORAGE_PROJECT_ID = process.env['FIRESTORE_PROJECT_ID'];
 const STORAGE_COLLECTION = process.env['FIRESTORE_COLLECTION'] ?? 'posts';
 const NODE_ENV = process.env['NODE_ENV'] ?? 'development';
-const ALLOWED_ORIGINS = process.env['ALLOWED_ORIGINS']
-  ?.split(',').map((o) => o.trim()).filter(Boolean)
-  ?? (NODE_ENV === 'production'
-    ? ['https://ai-universe-2025.web.app', 'https://ai-universe-2025.firebaseapp.com']
-    : '*');
+// CORS: development → wildcard; production → must use ALLOWED_ORIGINS env var (fail-fast if missing)
+const _rawOrigins = process.env['ALLOWED_ORIGINS']?.split(',').map((o) => o.trim()).filter(Boolean);
+const ALLOWED_ORIGINS: true | string[] =
+  NODE_ENV === 'development'
+    ? '*'
+    : (_rawOrigins && _rawOrigins.length > 0
+      ? _rawOrigins
+      : ((): never => {
+          throw new Error(
+            'ALLOWED_ORIGINS env var is required in production. '
+            + 'Set it to a comma-separated list of allowed origins.',
+          );
+        })());
 
 // ─── New config ───────────────────────────────────────────────────────────────
 
@@ -84,6 +92,8 @@ const DATA_DIR = process.env['DATA_DIR'] ?? 'data/';
 const API_KEY = process.env['API_KEY'];
 const API_KEYS_FILE = process.env['API_KEYS_FILE'];
 const MASTER_API_KEY = process.env['MASTER_API_KEY'];
+// Centralize key store path: use API_KEYS_FILE if set, otherwise DATA_DIR
+const API_KEYS_STORE = API_KEYS_FILE ?? DATA_DIR;
 const AUTO_SCAN_ENABLED = process.env['AUTO_SCAN_ENABLED'] === 'true';
 const AUTO_SCAN_INTERVAL_MS = (() => {
   const raw = process.env['AUTO_SCAN_INTERVAL_MS'] ?? '60000';
@@ -100,7 +110,7 @@ const ANTHROPIC_BASE_URL = process.env['ANTHROPIC_BASE_URL'] ?? 'https://api.ant
 
 // ─── Express app factory ───────────────────────────────────────────────────────
 
-export async function createBlogApp(): Promise<ReturnType<typeof express>> {
+export async function createBlogApp(): Promise<{ app: ReturnType<typeof express>; scanner: AutoScanner | null }> {
   const storage = createStorage({
     type: STORAGE_TYPE as 'memory' | 'firestore',
     projectId: STORAGE_PROJECT_ID,
@@ -127,7 +137,7 @@ export async function createBlogApp(): Promise<ReturnType<typeof express>> {
   // generated keys (via generate_api_key) are recognized without restart.
   let validKeys: ApiKey[] = [];
   if (authEnabled) {
-    validKeys = loadApiKeys(DATA_DIR);
+    validKeys = loadApiKeys(API_KEYS_STORE);
     let keysChanged = false;
 
     if (API_KEY && !validKeys.some((k) => hashKey(API_KEY!) === k.key)) {
@@ -151,7 +161,7 @@ export async function createBlogApp(): Promise<ReturnType<typeof express>> {
       logger.info('MASTER_API_KEY auto-registered with admin scope');
     }
 
-    if (keysChanged) saveApiKeys(validKeys, DATA_DIR);
+    if (keysChanged) saveApiKeys(validKeys, API_KEYS_STORE);
   }
 
   // Rate limiters — 100 req/min per IP
@@ -194,7 +204,7 @@ export async function createBlogApp(): Promise<ReturnType<typeof express>> {
   // POST /mcp — MCP JSON-RPC endpoint
   app.post(
     '/mcp',
-    [mcpLimiter, ...(authEnabled ? [requireApiKey(DATA_DIR)] : [])],
+    [mcpLimiter, ...(authEnabled ? [requireApiKey(API_KEYS_STORE)] : [])],
     async (req: Request, res: Response) => {
       const body = req.body;
       if (typeof body !== 'object' || body === null) {
@@ -263,7 +273,7 @@ export async function createBlogApp(): Promise<ReturnType<typeof express>> {
   const chat = new WorkerChat(registry, storage, { anthropicKey: ANTHROPIC_API_KEY, baseURL: ANTHROPIC_BASE_URL });
   app.post(
     '/chat',
-    [chatLimiter, ...(authEnabled ? [requireApiKey(DATA_DIR)] : [])],
+    [chatLimiter, ...(authEnabled ? [requireApiKey(API_KEYS_STORE)] : [])],
     async (req: Request, res: Response) => {
       try {
         const { workerId, message, repoKey } = req.body as {
@@ -292,7 +302,7 @@ export async function createBlogApp(): Promise<ReturnType<typeof express>> {
     scanner.start();
   }
 
-  return app;
+  return { app, scanner };
 }
 
 // ─── Main ─────────────────────────────────────────────────────────────────────
@@ -307,7 +317,7 @@ async function main() {
     autoScan: AUTO_SCAN_ENABLED,
   });
 
-  const app = await createBlogApp();
+  const { app, scanner } = await createBlogApp();
   const server = http.createServer(app);
 
   server.on('error', (err: Error & { code?: string }) => {
@@ -330,6 +340,7 @@ async function main() {
   for (const sig of ['SIGINT', 'SIGTERM'] as const) {
     process.on(sig, () => {
       logger.info(`Received ${sig}, shutting down`);
+      scanner?.stop();
       server.close(() => process.exit(0));
     });
   }

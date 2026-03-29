@@ -268,7 +268,14 @@ export async function createBlogApp(options?: {
 async function main() {
   logger.info('Starting Blog MCP server', { PORT: getPort(), NODE_ENV, AGENT_ID, storage: STORAGE_TYPE });
 
-  const app = await createBlogApp();
+  // Create a single shared storage instance so demo mode and MCP tools operate on the same data.
+  const sharedStorage = createStorage({
+    type: STORAGE_TYPE as 'memory' | 'file' | 'firestore',
+    projectId: STORAGE_PROJECT_ID,
+    collection: STORAGE_COLLECTION,
+  });
+
+  const app = await createBlogApp({ storage: sharedStorage });
   const server = http.createServer(app);
 
   server.on('error', (err: Error & { code?: string }) => {
@@ -290,15 +297,11 @@ async function main() {
         logger.error('Demo mode requires --repo owner/repo');
         process.exit(1);
       }
-      // Run demo mode asynchronously after server is up
+      // Run demo mode asynchronously using the shared storage so posts are
+      // immediately visible via the MCP tools (list_posts, get_post, etc.)
       void (async () => {
         const { runDemoMode } = await import('./demo.js');
-        const demoStorage = createStorage({
-          type: STORAGE_TYPE as 'memory' | 'file' | 'firestore',
-          projectId: STORAGE_PROJECT_ID,
-          collection: STORAGE_COLLECTION,
-        });
-        runDemoMode(demoStorage, {
+        runDemoMode(sharedStorage, {
           repo: DEMO_REPO!,
           maxCommits: DEMO_MAX_COMMITS,
           sessionPrefix: DEMO_SESSION_PREFIX,

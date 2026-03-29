@@ -43,9 +43,11 @@ export type ListPostsParamsIn = z.infer<typeof ListPostsParams>;
 function makeSlug(title: string): string {
   return title
     .toLowerCase()
+    .replace(/[/]/g, '-')
     .replace(/[^a-z0-9\s-]/g, '')
     .trim()
     .replace(/\s+/g, '-')
+    .replace(/-+/g, '-')
     .slice(0, 80);
 }
 
@@ -269,14 +271,16 @@ export function createBlogToolHandlers(ctx: BlogToolContext) {
 
     async update_post(rawParams: unknown) {
       try {
-        const { repoKey, postId, ...updates } = await z.object({
+        const { repoKey, postId } = await z.object({
           repoKey: RepoKeySchema,
           postId: z.string().uuid(),
-          title: PostSchema.shape.title.optional(),
-          content: PostSchema.shape.content.optional(),
-          tags: PostSchema.shape.tags.optional(),
-          status: PostSchema.shape.status.optional(),
         }).parseAsync(rawParams);
+        // Support both: { postId, repoKey, updates: {...} } and flat { postId, repoKey, title, status, ... }
+        const raw = rawParams as Record<string, unknown>;
+        const updates: Record<string, unknown> =
+          (typeof raw['updates'] === 'object' && raw['updates'] !== null && !Array.isArray(raw['updates']))
+            ? raw['updates'] as Record<string, unknown>
+            : Object.fromEntries(Object.entries(raw).filter(([k]) => k !== 'repoKey' && k !== 'postId'));
 
         const existing = await ctx.storage.getPost(postId);
         if (!existing) return toMcpError(`Post not found: ${postId}`);

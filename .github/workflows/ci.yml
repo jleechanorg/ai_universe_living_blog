@@ -27,6 +27,20 @@ jobs:
         with:
           distribution: temurin
           java-version: "21"
+        # On self-hosted macOS, setup-java may need sudo for Python deps.
+        # If this step fails, JAVA_HOME is set manually below instead.
+        continue-on-error: true
+
+      - name: Set JAVA_HOME if setup-java failed (self-hosted macOS fallback)
+        run: |
+          if ! java -version 2>/dev/null; then
+            JAVA_CACHED=$(ls -d ~/actions-runner-aub2/_work/_tool/Java_Temurin-Hotspot_jdk/*/arm64/Contents/Home 2>/dev/null | tail -1 || ls -d ~/actions-runner-aub/_work/_tool/Java_Temurin-Hotspot_jdk/*/arm64/Contents/Home 2>/dev/null | tail -1 || true)
+            if [ -n "$JAVA_CACHED" ]; then
+              echo "JAVA_HOME=$JAVA_CACHED" >> "$GITHUB_ENV"
+              echo "PATH=$JAVA_CACHED/bin:$PATH" >> "$GITHUB_ENV"
+              echo "Using cached Java: $JAVA_CACHED"
+            fi
+          fi
 
       - name: Cache Firebase emulator JARs
         uses: actions/cache@v4
@@ -78,6 +92,9 @@ jobs:
         uses: actions/setup-python@v4
         with:
           python-version: "3.11"
+        # On self-hosted macOS, setup-python may need sudo for installation.
+        # python3 is already available via Homebrew — continue-on-error is safe.
+        continue-on-error: true
 
       - name: Run agent harness validation
         run: python3 scripts/agent_repo_check.py

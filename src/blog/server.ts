@@ -22,6 +22,7 @@ import { logger } from '../shared/logger.js';
 import { RepoRegistry } from './repo-registry.js';
 import { GitHubClient } from './github-client.js';
 import { createWebhookHandler } from './webhook.js';
+import { createAutoScanner } from './scanner.js';
 
 // ─── Extended Request with rawBody ────────────────────────────────────────────
 
@@ -63,6 +64,13 @@ const WEBHOOK_SECRET = process.env['WEBHOOK_SECRET'];
 const GITHUB_TOKEN = process.env['GITHUB_TOKEN'];
 const STORAGE_COLLECTION = process.env['FIRESTORE_COLLECTION'] ?? 'posts';
 const NODE_ENV = process.env['NODE_ENV'] ?? 'development';
+const AUTO_SCAN_ENABLED = process.env['AUTO_SCAN_ENABLED'] === 'true';
+const AUTO_SCAN_INTERVAL_MS = (() => {
+  const raw = process.env['AUTO_SCAN_INTERVAL_MS'];
+  if (!raw) return 60_000;
+  const n = Number(raw);
+  return Number.isFinite(n) && n > 0 ? n : 60_000;
+})();
 const ALLOWED_ORIGINS = process.env['ALLOWED_ORIGINS']
   ?.split(',').map((o) => o.trim()).filter(Boolean)
   ?? (NODE_ENV === 'production'
@@ -235,6 +243,18 @@ export async function createBlogApp(options?: {
   // ── Webhook receiver ──────────────────────────────────────────────────────
   const webhookHandler = createWebhookHandler(registry, storage, github, DATA_DIR, WEBHOOK_SECRET);
   app.post('/webhook', webhookHandler as (req: Request, res: Response) => Promise<void>);
+
+  // ── AutoScanner (background polling) ─────────────────────────────────────
+  // Enabled via AUTO_SCAN_ENABLED=true env var (off by default).
+  // Uses AUTO_SCAN_INTERVAL_MS (default: 60000ms) for polling cadence.
+  if (AUTO_SCAN_ENABLED) {
+    const scanner = createAutoScanner(registry, storage, github, {
+      intervalMs: AUTO_SCAN_INTERVAL_MS,
+      dataDir: DATA_DIR,
+    });
+    scanner.start();
+    logger.info('AutoScanner started', { intervalMs: AUTO_SCAN_INTERVAL_MS });
+  }
 
   return app;
 }

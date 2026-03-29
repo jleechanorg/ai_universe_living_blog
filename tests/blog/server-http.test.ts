@@ -233,7 +233,6 @@ describe('GET /metrics endpoint', () => {
 
   // G.4 test 2
   it('response contains blog_posts_created_total after creating a post', async () => {
-    // First clear any prior state by creating a fresh app (each test has its own counters)
     // Create a post via MCP
     await request(app)
       .post('/mcp')

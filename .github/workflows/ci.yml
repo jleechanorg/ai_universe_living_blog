@@ -44,6 +44,7 @@ jobs:
         env:
           FIRESTORE_EMULATOR_HOST: localhost:8080
           FIRESTORE_PROJECT_ID: test-project
+          GCLOUD_PROJECT: test-project
 
       - name: Set up Python
         uses: actions/setup-python@v4

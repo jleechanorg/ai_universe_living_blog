@@ -10,15 +10,17 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { spawn } from 'child_process';
 import http from 'http';
-import { readFileSync, writeFileSync, unlinkSync, mkdtempSync } from 'fs';
-import { join } from 'path';
+import { readFileSync, writeFileSync, unlinkSync } from 'fs';
+import { join, dirname } from 'path';
+import { fileURLToPath } from 'url';
 import { tmpdir } from 'os';
 import { randomUUID } from 'crypto';
 import request from 'supertest';
 import type { Application } from 'express';
 import type { AddressInfo } from 'net';
 
-const PROJECT_ROOT = '/Users/jleechan/projects_other/ai_universe_living_blog';
+// Derive project root from this file's location (tests/novel/ → tests/ → project root)
+const PROJECT_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 
 // Default test timeout for subprocess tests (CLI spawning + execution can take 5-10s)
 const CLI_TIMEOUT = 60_000;

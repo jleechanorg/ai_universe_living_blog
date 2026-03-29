@@ -298,20 +298,20 @@ async function main() {
         process.exit(1);
       }
       // Run demo mode asynchronously using the shared storage so posts are
-      // immediately visible via the MCP tools (list_posts, get_post, etc.)
+      // immediately visible via the MCP tools (list_posts, get_post, etc.).
+      // The .catch() is on the IIFE itself so it covers both import() and runDemoMode().
       void (async () => {
         const { runDemoMode } = await import('./demo.js');
-        runDemoMode(sharedStorage, {
+        const n = await runDemoMode(sharedStorage, {
           repo: DEMO_REPO!,
           maxCommits: DEMO_MAX_COMMITS,
           sessionPrefix: DEMO_SESSION_PREFIX,
           githubToken: GITHUB_TOKEN,
-        }).then((n) => {
-          logger.info(`Demo mode: ${n} posts created — server ready`);
-        }).catch((err: unknown) => {
-          logger.error('Demo mode failed', { err: String(err) });
         });
-      })();
+        logger.info(`Demo mode: ${n} posts created — server ready`);
+      })().catch((err: unknown) => {
+        logger.error('Demo mode failed', { err: String(err) });
+      });
     }
   });
 

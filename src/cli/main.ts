@@ -71,6 +71,10 @@ export interface ParsedArgs {
   title?: string;
   content?: string;
   status?: string;
+  // update-repo
+  enabled?: boolean;
+  // replay-event
+  count?: number;
   // env overrides
   blogServerUrl: string;
 }
@@ -327,11 +331,44 @@ export function parseArgs(argv: string[]): ParsedArgs {
         blogServerUrl,
       };
     }
+    case 'update-repo': {
+      if (!raw['repo'])
+        throw new Error('update-repo requires --repo <owner/repo>');
+      return {
+        command,
+        repo: String(raw['repo']),
+        enabled: raw['enabled'] !== undefined ? String(raw['enabled']) === 'true' : undefined,
+        autoScan: raw['auto-scan'] !== undefined ? String(raw['auto-scan']) === 'true' : undefined,
+        blogServerUrl,
+      };
+    }
+    case 'generate-api-key': {
+      if (!raw['repo'])
+        throw new Error('generate-api-key requires --repo <owner/repo>');
+      return {
+        command,
+        repo: String(raw['repo']),
+        blogServerUrl,
+      };
+    }
+    case 'replay-event': {
+      if (!raw['repo'])
+        throw new Error('replay-event requires --repo <owner/repo>');
+      if (!raw['event-type'])
+        throw new Error('replay-event requires --event-type <type>');
+      return {
+        command,
+        repo: String(raw['repo']),
+        eventType: String(raw['event-type']),
+        count: raw['count'] ? parseInt(String(raw['count']), 10) : undefined,
+        blogServerUrl,
+      };
+    }
     default:
       throw new Error(
         `Unknown command: "${command}"\n` +
           'Usage: blog-cli <command> [options]\n' +
-          'Commands: branch-entry, daily-summary, chat, config, register-repo, list, get, search, stats, delete, unregister-repo, list-repos, export, list-threads, get-thread, update-post',
+          'Commands: branch-entry, daily-summary, chat, config, register-repo, list, get, search, stats, delete, unregister-repo, list-repos, export, list-threads, get-thread, update-post, update-repo, generate-api-key, replay-event',
       );
   }
 }
@@ -1022,6 +1059,42 @@ export async function runUpdatePostCommand(args: ParsedArgs): Promise<void> {
   console.log(`Updated post ${postId}`);
 }
 
+// ─── L.1 update-repo command ──────────────────────────────────────────────────
+
+export async function runUpdateRepoCommand(args: ParsedArgs): Promise<void> {
+  const params: Record<string, unknown> = { repoKey: args.repo! };
+  if (args.enabled !== undefined) params['enabled'] = args.enabled;
+  if (args.autoScan !== undefined) params['autoScan'] = args.autoScan;
+  const result = await callMcpTool(args.blogServerUrl, 'update_repo', params);
+  console.log(JSON.stringify(result, null, 2));
+}
+
+// ─── L.2 generate-api-key command ────────────────────────────────────────────
+
+export async function runGenerateApiKeyCommand(args: ParsedArgs): Promise<void> {
+  const result = await callMcpTool(args.blogServerUrl, 'generate_api_key', {
+    repoKey: args.repo!,
+  });
+  const { apiKey } = result as { apiKey?: string };
+  if (apiKey) {
+    console.log(apiKey);
+  } else {
+    console.log(JSON.stringify(result, null, 2));
+  }
+}
+
+// ─── L.3 replay-event command ────────────────────────────────────────────────
+
+export async function runReplayEventCommand(args: ParsedArgs): Promise<void> {
+  const params: Record<string, unknown> = {
+    repoKey: args.repo!,
+    eventType: args.eventType!,
+  };
+  if (args.count !== undefined) params['count'] = args.count;
+  const result = await callMcpTool(args.blogServerUrl, 'replay_event', params);
+  console.log(JSON.stringify(result, null, 2));
+}
+
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
 export async function main(argv = process.argv.slice(2)): Promise<void> {
@@ -1082,6 +1155,15 @@ export async function main(argv = process.argv.slice(2)): Promise<void> {
         break;
       case 'update-post':
         await runUpdatePostCommand(parsed);
+        break;
+      case 'update-repo':
+        await runUpdateRepoCommand(parsed);
+        break;
+      case 'generate-api-key':
+        await runGenerateApiKeyCommand(parsed);
+        break;
+      case 'replay-event':
+        await runReplayEventCommand(parsed);
         break;
     }
   } catch (err) {

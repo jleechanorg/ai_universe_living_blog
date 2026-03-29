@@ -14,7 +14,7 @@ concurrency:
 jobs:
   skeptic_gate:
     name: Skeptic Gate
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, ai_universe_living_blog]
     permissions:
       pull-requests: write
       issues: write

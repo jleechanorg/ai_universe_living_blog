@@ -141,3 +141,75 @@ describe('Blog MCP Server HTTP', () => {
     expect(result.status).toBe('healthy');
   });
 });
+
+// ─── Rate limiting ─────────────────────────────────────────────────────────────
+// Each describe block uses a fresh app with low custom limits to keep tests fast.
+
+describe('Blog MCP Server — global rate limit', () => {
+  let app: Application;
+  const GLOBAL_MAX = 5;
+
+  beforeAll(async () => {
+    process.env['STORAGE_TYPE'] = 'memory';
+    const { createBlogApp } = await import('../../src/blog/server.js');
+    app = await createBlogApp({ rateLimits: { globalMax: GLOBAL_MAX } });
+  });
+
+  it(`returns 429 after ${GLOBAL_MAX} global requests/min`, async () => {
+    for (let i = 0; i < GLOBAL_MAX; i++) {
+      const r = await request(app).post('/mcp').send(mcpPayload('health_check'));
+      expect(r.status).toBe(200);
+    }
+    const res = await request(app).post('/mcp').send(mcpPayload('health_check'));
+    expect(res.status).toBe(429);
+    expect(res.headers['ratelimit-limit']).toBe(String(GLOBAL_MAX));
+  });
+});
+
+describe('Blog MCP Server — chat_worker rate limit', () => {
+  let app: Application;
+  const CHAT_MAX = 3;
+
+  beforeAll(async () => {
+    process.env['STORAGE_TYPE'] = 'memory';
+    const { createBlogApp } = await import('../../src/blog/server.js');
+    app = await createBlogApp({ rateLimits: { globalMax: 100, chatMax: CHAT_MAX } });
+  });
+
+  it(`returns 429 after ${CHAT_MAX} chat_worker requests/min`, async () => {
+    for (let i = 0; i < CHAT_MAX; i++) {
+      const r = await request(app).post('/mcp').send(mcpPayload('chat_worker', { workerId: 'x', message: 'hi', repoKey: 'o/r' }));
+      expect(r.status).toBe(200);
+    }
+    const res = await request(app).post('/mcp').send(mcpPayload('chat_worker', { workerId: 'x', message: 'hi', repoKey: 'o/r' }));
+    expect(res.status).toBe(429);
+    expect(res.headers['ratelimit-limit']).toBe(String(CHAT_MAX));
+  });
+});
+
+describe('Blog MCP Server — write tools rate limit', () => {
+  let app: Application;
+  const WRITE_MAX = 4;
+
+  beforeAll(async () => {
+    process.env['STORAGE_TYPE'] = 'memory';
+    const { createBlogApp } = await import('../../src/blog/server.js');
+    app = await createBlogApp({ rateLimits: { globalMax: 100, writeMax: WRITE_MAX } });
+  });
+
+  it(`returns 429 after ${WRITE_MAX} create_post requests/min`, async () => {
+    for (let i = 0; i < WRITE_MAX; i++) {
+      const r = await request(app).post('/mcp').send(mcpPayload('create_post', {
+        repoKey: 'o/r', sessionId: 'x', eventType: 'pr_created',
+        title: `post ${i}`, content: 'body', prNumber: i + 1,
+      }));
+      expect(r.status).toBe(200);
+    }
+    const res = await request(app).post('/mcp').send(mcpPayload('create_post', {
+      repoKey: 'o/r', sessionId: 'x', eventType: 'pr_created',
+      title: 'post over limit', content: 'body', prNumber: WRITE_MAX + 1,
+    }));
+    expect(res.status).toBe(429);
+    expect(res.headers['ratelimit-limit']).toBe(String(WRITE_MAX));
+  });
+});

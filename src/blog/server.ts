@@ -14,6 +14,7 @@
 import express from 'express';
 import type { Request, Response } from 'express';
 import cors from 'cors';
+import rateLimit from 'express-rate-limit';
 import http from 'http';
 import { createStorage } from './storage-factory.js';
 import { createBlogToolHandlers, type BlogToolContext } from './tools.js';
@@ -70,8 +71,19 @@ const ALLOWED_ORIGINS = process.env['ALLOWED_ORIGINS']
 
 // ─── Express app factory ───────────────────────────────────────────────────────
 
-export async function createBlogApp(): Promise<ReturnType<typeof express>> {
-  const storage = createStorage({
+export async function createBlogApp(options?: {
+  /** Inject pre-created storage (e.g., shared instance in demo mode or tests). */
+  storage?: import('../shared/types.js').BlogStorage;
+  /** Disable rate limiting (for integration tests that need >100 requests). */
+  disableRateLimiting?: boolean;
+  /** Override default rate limits per endpoint tier (useful for testing). */
+  rateLimits?: {
+    globalMax?: number;   // default 100/min
+    writeMax?: number;    // default 20/min
+    chatMax?: number;     // default 10/min
+  };
+}): Promise<ReturnType<typeof express>> {
+  const storage = options?.storage ?? createStorage({
     type: STORAGE_TYPE as 'memory' | 'file' | 'firestore',
     projectId: STORAGE_PROJECT_ID,
     collection: STORAGE_COLLECTION,
@@ -86,6 +98,35 @@ export async function createBlogApp(): Promise<ReturnType<typeof express>> {
 
   const app = express();
   app.use(cors({ origin: ALLOWED_ORIGINS }));
+
+  // ── Rate limiting (design doc Section C) ─────────────────────────────────
+  // Global: 100 req/min/IP; write-tool: 20 req/min/IP; chat_worker: 10 req/min/IP
+  // Pass disableRateLimiting:true to skip; use rateLimits:{} to override thresholds.
+  const globalMax = options?.rateLimits?.globalMax ?? 100;
+  const writeMax = options?.rateLimits?.writeMax ?? 20;
+  const chatMax = options?.rateLimits?.chatMax ?? 10;
+  const globalLimiter = options?.disableRateLimiting ? null : rateLimit({
+    windowMs: 60 * 1000,
+    max: globalMax,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { jsonrpc: '2.0', id: null, error: { code: -32000, message: 'Rate limit exceeded' } },
+  });
+  const writeLimiter = options?.disableRateLimiting ? null : rateLimit({
+    windowMs: 60 * 1000,
+    max: writeMax,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { jsonrpc: '2.0', id: null, error: { code: -32000, message: 'Write rate limit exceeded' } },
+  });
+  const chatLimiter = options?.disableRateLimiting ? null : rateLimit({
+    windowMs: 60 * 1000,
+    max: chatMax,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { jsonrpc: '2.0', id: null, error: { code: -32000, message: 'Chat rate limit exceeded' } },
+  });
+  if (globalLimiter) app.use('/mcp', globalLimiter);
 
   // ── Capture raw body bytes before JSON parsing (for webhook HMAC) ────────
   // Use express.json verify callback to capture the exact raw bytes GitHub signed,
@@ -122,6 +163,26 @@ export async function createBlogApp(): Promise<ReturnType<typeof express>> {
     });
   });
 
+  // Write tools subject to lower per-IP rate limit
+  const WRITE_METHODS = new Set([
+    'create_post', 'update_post', 'register_repo', 'unregister_repo',
+    'update_repo', 'generate_api_key',
+  ]);
+
+  /** Run an express-rate-limit middleware as a promise; returns false if rate-limited. */
+  function applyLimiter(
+    limiter: ReturnType<typeof rateLimit>,
+    req: Request,
+    res: Response,
+  ): Promise<boolean> {
+    return new Promise((resolve) => {
+      limiter(req, res, () => resolve(true));
+      // If rate-limited, limiter calls res.status(429).send() and never calls next(),
+      // so the promise stays pending. Resolve false after the response is sent.
+      res.on('finish', () => resolve(false));
+    });
+  }
+
   // JSON-RPC 2.0 handler
   app.post('/mcp', async (req, res) => {
     const body = req.body;
@@ -140,6 +201,15 @@ export async function createBlogApp(): Promise<ReturnType<typeof express>> {
         jsonrpc: '2.0', id: id ?? null,
         error: { code: -32600, message: 'Invalid Request — JSON-RPC 2.0 required' },
       });
+    }
+
+    // Per-method rate limiting: chat_worker < write tools < global (already applied)
+    if (method === 'chat_worker' && chatLimiter) {
+      const ok = await applyLimiter(chatLimiter, req, res);
+      if (!ok) return;
+    } else if (WRITE_METHODS.has(method) && writeLimiter) {
+      const ok = await applyLimiter(writeLimiter, req, res);
+      if (!ok) return;
     }
 
     const handler = (tools as Record<string, (p?: unknown) => Promise<unknown>>)[method];

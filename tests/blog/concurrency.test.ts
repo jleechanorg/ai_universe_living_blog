@@ -40,7 +40,7 @@ beforeAll(async () => {
   process.env['FILE_STORAGE_PATH'] = tmpFilePath;
 
   const { createBlogApp } = await import('../../src/blog/server.js');
-  app = await createBlogApp();
+  app = await createBlogApp({ disableRateLimiting: true });
 });
 
 afterAll(() => {

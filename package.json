@@ -22,6 +22,9 @@
       "import": "./dist/shared/types.js"
     }
   },
+  "bin": {
+    "blog-cli": "./src/cli/main.ts"
+  },
   "repository": {
     "type": "git",
     "url": "https://github.com/jleechanorg/ai_universe_living_blog"
@@ -34,6 +37,7 @@
     "dev:blog": "tsx --watch src/blog/server.ts",
     "dev:novel": "tsx --watch src/novel/cli.ts",
     "start:novel": "tsx src/novel/cli.ts",
+    "blog-cli": "tsx src/cli/main.ts",
     "dev": "npm run dev:blog",
     "test": "vitest run",
     "test:watch": "vitest",

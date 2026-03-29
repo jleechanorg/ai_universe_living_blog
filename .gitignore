@@ -6,3 +6,9 @@ dist/
 coverage/
 .claude/scheduled_tasks.lock
 blog-data.json
+data/
+novel/workers/
+firestore-data/
+firebase-debug.log
+firestore-debug.log
+docs/plans/

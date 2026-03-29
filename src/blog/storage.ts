@@ -276,4 +276,41 @@ export class MemoryBlogStorage implements BlogStorage {
 
     return { threads: slice, cursor: nextCursor };
   }
+
+  // ─── Delete ────────────────────────────────────────────────────────────────
+
+  async deletePost(id: string): Promise<void> {
+    const post = this.posts.get(id);
+    if (!post) return;
+    const repoKeyEnc = encodeRepoKey(post.repoKey);
+    const threadId = post.threadId;
+    this.posts.delete(id);
+    this.repoPosts.get(repoKeyEnc)?.delete(id);
+    this.threadPosts.get(threadId)?.delete(id);
+    // Recalculate thread postCount to keep it accurate
+    const remaining = this.threadPosts.get(threadId)?.size ?? 0;
+    const thread = this.threads.get(threadId);
+    if (thread) {
+      this.threads.set(threadId, { ...thread, postCount: remaining });
+    }
+    this.persistPosts();
+    logger.debug('Post deleted', { id });
+  }
+
+  async deleteThread(id: string): Promise<void> {
+    const thread = this.threads.get(id);
+    if (!thread) return;
+    const repoKeyEnc = encodeRepoKey(thread.repoKey);
+    // Delete all posts in this thread
+    const postIds = this.threadPosts.get(id) ?? new Set();
+    for (const pid of postIds) {
+      this.posts.delete(pid);
+      this.repoPosts.get(repoKeyEnc)?.delete(pid);
+    }
+    this.threadPosts.delete(id);
+    this.threads.delete(id);
+    this.repoThreads.get(repoKeyEnc)?.delete(id);
+    this.persistPosts();
+    logger.debug('Thread deleted', { id });
+  }
 }

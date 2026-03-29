@@ -153,6 +153,10 @@ export interface BlogStorage {
   createThread(thread: Thread): Promise<Thread>;
   updateThread(id: string, updates: Partial<Thread>): Promise<Thread>;
   listThreads(params: ListThreadsParams): Promise<ListThreadsResult>;
+
+  // Delete ops
+  deletePost(id: string): Promise<void>;
+  deleteThread(id: string): Promise<void>;
 }
 
 export interface ListPostsParams {

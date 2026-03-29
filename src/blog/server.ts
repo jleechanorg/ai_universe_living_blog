@@ -24,6 +24,11 @@ import { GitHubClient } from './github-client.js';
 import { createWebhookHandler } from './webhook.js';
 import { createAutoScanner } from './scanner.js';
 
+// ─── Prometheus metrics counter map ────────────────────────────────────────────
+
+/** In-memory metrics counters for GET /metrics (Prometheus text format). */
+export type MetricsCounters = Map<string, number>;
+
 // ─── Extended Request with rawBody ────────────────────────────────────────────
 
 /** Augment Express Request to include raw bytes captured before JSON parsing. */
@@ -125,7 +130,10 @@ export async function createBlogApp(options?: {
   const registry = new RepoRegistry(DATA_DIR);
   const github = new GitHubClient(GITHUB_TOKEN);
 
-  const ctx: BlogToolContext = { storage, agentId: AGENT_ID, registry, dataDir: DATA_DIR };
+  // Prometheus in-memory counter map
+  const metricsCounters: MetricsCounters = new Map();
+
+  const ctx: BlogToolContext = { storage, agentId: AGENT_ID, registry, dataDir: DATA_DIR, metricsCounters };
   const tools = createBlogToolHandlers(ctx);
 
   const app = express();
@@ -195,6 +203,26 @@ export async function createBlogApp(options?: {
     });
   });
 
+  // ── Prometheus metrics (G.4) ─────────────────────────────────────────────────
+  app.get('/metrics', (_req, res) => {
+    const lines: string[] = ['# HELP blog_posts_created_total Posts created via create_post tool'];
+    lines.push('# TYPE blog_posts_created_total counter');
+    lines.push('# HELP blog_posts_deleted_total Posts deleted via delete_post tool');
+    lines.push('# TYPE blog_posts_deleted_total counter');
+    lines.push('# HELP blog_requests_total Total HTTP requests to /mcp by method and status');
+    lines.push('# TYPE blog_requests_total counter');
+
+    const seen = new Set<string>();
+    for (const [key, value] of metricsCounters) {
+      if (seen.has(key)) continue;
+      seen.add(key);
+      lines.push(`${key} ${value}`);
+    }
+
+    res.set('Content-Type', 'text/plain; charset=utf-8');
+    res.send(lines.join('\n') + '\n');
+  });
+
   // Write tools subject to lower per-IP rate limit
   const WRITE_METHODS = new Set([
     'create_post', 'update_post', 'register_repo', 'unregister_repo',
@@ -254,9 +282,15 @@ export async function createBlogApp(options?: {
 
     try {
       const result = await handler(params);
+      // Increment request counter
+      const status = (result as { isError?: boolean }).isError ? 'error' : 'ok';
+      const reqKey = `blog_requests_total{method="${method}",status="${status}"}`;
+      metricsCounters.set(reqKey, (metricsCounters.get(reqKey) ?? 0) + 1);
       return res.json({ jsonrpc: '2.0', id, result });
     } catch (err) {
       logger.error('Unhandled tool error', { method, error: String(err) });
+      const reqKey = `blog_requests_total{method="${method}",status="error"}`;
+      metricsCounters.set(reqKey, (metricsCounters.get(reqKey) ?? 0) + 1);
       return res.json({
         jsonrpc: '2.0', id,
         error: { code: -32603, message: 'Internal error', data: String(err) },

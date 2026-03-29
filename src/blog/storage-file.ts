@@ -154,4 +154,16 @@ export class FileBlogStorage implements BlogStorage {
   async listThreads(params: ListThreadsParams): Promise<ListThreadsResult> {
     return this.mem.listThreads(params);
   }
+
+  // ─── Delete ────────────────────────────────────────────────────────────────
+
+  async deletePost(id: string): Promise<void> {
+    await this.mem.deletePost(id);
+    await this.flush();
+  }
+
+  async deleteThread(id: string): Promise<void> {
+    await this.mem.deleteThread(id);
+    await this.flush();
+  }
 }

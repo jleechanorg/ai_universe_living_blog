@@ -9,7 +9,7 @@ on:
 jobs:
   test-and-validate:
     name: Test + Agent Harness Validation
-    runs-on: [self-hosted, ai_universe_living_blog]
+    runs-on: ubuntu-latest
     permissions:
       contents: read
     steps:

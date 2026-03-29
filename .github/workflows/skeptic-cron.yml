@@ -58,23 +58,19 @@ jobs:
 
             FAIL_REASONS=""
 
-            # 1. CI green — check combined commit status + check runs
-            CI_STATUS=$(gh api repos/${{ github.repository }}/commits/"$HEAD_SHA"/status \
-              --jq '.state' 2>/dev/null || echo "error")
-            # Also check check-runs (for Actions-based CI)
+            # 1. CI green — check check-runs, excluding Skeptic Gate itself (circular dependency)
+            # Neutral (cursor bugbot) and skipped count as passing.
             CHECK_RUNS=$(gh api repos/${{ github.repository }}/commits/"$HEAD_SHA"/check-runs \
-              --jq '[.check_runs[] | select(.conclusion != null and .conclusion != "skipped") | .conclusion] | if length == 0 then "no_checks" elif all(. == "success") then "success" else "failure" end' 2>/dev/null || echo "error")
+              --jq '[.check_runs[] | select(.conclusion != null and .conclusion != "skipped" and .name != "Skeptic Gate" and .name != "Skeptic Cron") | .conclusion] | if length == 0 then "no_checks" elif all(. == "success" or . == "neutral") then "success" else "failure" end' 2>/dev/null || echo "error")
 
             CI_OK=false
-            if [ "$CI_STATUS" = "success" ]; then
-              CI_OK=true
-            elif [ "$CHECK_RUNS" = "success" ] || [ "$CHECK_RUNS" = "no_checks" ]; then
+            if [ "$CHECK_RUNS" = "success" ] || [ "$CHECK_RUNS" = "no_checks" ]; then
               CI_OK=true
             fi
 
             if [ "$CI_OK" = "false" ]; then
-              FAIL_REASONS="${FAIL_REASONS}CI not green (status=$CI_STATUS checks=$CHECK_RUNS); "
-              echo "  [1] CI green:           FAIL (status=$CI_STATUS, checks=$CHECK_RUNS)"
+              FAIL_REASONS="${FAIL_REASONS}CI not green (checks=$CHECK_RUNS); "
+              echo "  [1] CI green:           FAIL (checks=$CHECK_RUNS)"
             else
               echo "  [1] CI green:           PASS"
             fi

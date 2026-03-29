@@ -56,7 +56,7 @@ The project has two independent subsystems that compose through a shared storage
 - `threadPosts: Map<string, Set<string>>` — threadId → post IDs
 - `repoThreads: Map<string, Set<string>>` — encoded repoKey → thread IDs
 
-**Persistence:** `MemoryBlogStorage` is pure in-memory by default. Swap for `FirestoreBlogStorage` for production (see `docs/CONFIGURATION.md`). JSON-file persistence via `DATA_DIR` is planned.
+**Persistence:** `MemoryBlogStorage` is pure in-memory by default. For file-backed persistence, use `STORAGE_TYPE=file` (writes to `./blog-data.json` or the path in `FILE_STORAGE_PATH`). Swap for `FirestoreBlogStorage` in production (see `docs/CONFIGURATION.md`).
 
 **Stability guarantees:**
 

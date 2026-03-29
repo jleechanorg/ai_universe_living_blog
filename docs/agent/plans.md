@@ -2,39 +2,44 @@
 title: Plans
 purpose: Current initiatives, active PRs, known next steps, and open work
 owner: AO team
-last_reviewed: "2026-03-26"
+last_reviewed: "2026-03-29"
 source_of_truth: GitHub PR list
 ---
 
 # Plans
 
-## Open PRs (as of 2026-03-26)
+## Open PRs
 
-| PR | Title | Status |
-|----|-------|--------|
-| #11 | fix(worker-poster): address PR #9 review comments | OPEN |
-| #9 | feat(hooks): add worker-poster auto-posting for AO lifecycle events [P1] | OPEN |
-| #7 | [P0] feat(storage): FirestoreBlogStorage + storage factory (P0-1) | OPEN |
-| #6 | [P2] feat: daily novel summary cron for ai_universe_living_blog | OPEN |
+None — all design doc sections (A–F) are implemented and merged.
 
-## Phase 2 Roadmap
+## Completed Milestones (2026-03-29)
 
-See `docs/superpowers/plans/2026-03-26-phase2-roadmap.md` for full details.
+| PR | Title |
+|----|-------|
+| #33 | feat(cli): blog-cli daily-summary command |
+| #32 | feat(server): AUTO_SCAN_ENABLED + AUTO_SCAN_INTERVAL_MS env vars |
+| #31 | feat(blog): IP-based rate limiting (Section C) |
+| #30 | feat(blog): Demo Mode (Section D) |
+| #29 | feat(novel): FIFO bidirectional chat (Section E) |
+| #28 | feat(cli): --output=both and --output=none modes |
+| #27 | feat(cli): blog-cli entry point (Section A) |
+| #19 | feat: Remote Mode + Auto-Scan Architecture |
 
-Key initiatives:
-- **P0:** FirestoreBlogStorage + storage factory — swap from in-memory to persistent
-- **P1:** Worker poster lifecycle hooks — auto-post on AO PR events
-- **P2:** Daily cron for novel summaries
-- **P3:** Storage selection CLI flag (`--storage=firestore`)
+## Current State
 
-## Known Gaps
+- **Tests:** 332 passing (30 files)
+- **Design doc coverage:** 100% (Sections A–F)
+- **Auto-merge:** Skeptic cron runs every 30 min, merges on CI + MERGEABLE + no CHANGES_REQUESTED
+- **Storage backends:** memory (default), file (STORAGE_TYPE=file), firestore (STORAGE_TYPE=firestore)
 
-- `install.sh --storage=firestore` flag wiring not yet implemented
-- Novel engine CLI does not call blog HTTP endpoint — uses in-process storage only
-- Evidence doc SHA256 suffixes are artifacts; clean up if they proliferate
+## Known Gaps (resolved)
+
+- ~~`install.sh --storage=firestore` flag wiring~~ — storage factory wired via STORAGE_TYPE env var
+- ~~Novel engine CLI does not call blog HTTP endpoint~~ — `--output=both` implemented in blog-cli
+- ~~`daily-summary` was stubbed in blog-cli~~ — implemented in PR #33
 
 ## Next Steps
 
-1. Land PRs #7 (storage) and #9 (lifecycle hooks) — these unblock Phase 2
-2. Wire `--storage` CLI flag to storage factory
-3. Add CI enforcement for `agent_repo_check.py`
+1. Monitor Firestore integration in production (ADC / emulator tested locally)
+2. Consider adding webhook HMAC validation tests
+3. Consider adding integration tests that exercise the full AutoScanner poll cycle

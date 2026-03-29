@@ -65,6 +65,12 @@ export interface ParsedArgs {
   days?: number;
   // export
   outputFile?: string;
+  // get-thread
+  threadId?: string;
+  // update-post
+  title?: string;
+  content?: string;
+  status?: string;
   // env overrides
   blogServerUrl: string;
 }
@@ -117,7 +123,7 @@ export function parseArgs(argv: string[]): ParsedArgs {
   if (!command || command.startsWith('--')) {
     throw new Error(
       'Usage: blog-cli <command> [options]\n' +
-        'Commands: branch-entry, daily-summary, chat, config, register-repo, list, get, search, stats, delete, unregister-repo, list-repos, export',
+        'Commands: branch-entry, daily-summary, chat, config, register-repo, list, get, search, stats, delete, unregister-repo, list-repos, export, list-threads, get-thread, update-post',
     );
   }
 
@@ -281,11 +287,51 @@ export function parseArgs(argv: string[]): ParsedArgs {
         blogServerUrl,
       };
     }
+    case 'list-threads': {
+      if (!raw['repo'])
+        throw new Error('list-threads requires --repo <owner/repo>');
+      return {
+        command,
+        repo: String(raw['repo']),
+        limit: raw['limit'] ? parseInt(String(raw['limit']), 10) : undefined,
+        cursor: raw['cursor'] ? String(raw['cursor']) : undefined,
+        json: Boolean(raw['json']),
+        blogServerUrl,
+      };
+    }
+    case 'get-thread': {
+      if (!raw['repo'])
+        throw new Error('get-thread requires --repo <owner/repo>');
+      if (!raw['thread-id'])
+        throw new Error('get-thread requires --thread-id <id>');
+      return {
+        command,
+        repo: String(raw['repo']),
+        threadId: String(raw['thread-id']),
+        blogServerUrl,
+      };
+    }
+    case 'update-post': {
+      if (!raw['repo'])
+        throw new Error('update-post requires --repo <owner/repo>');
+      if (!raw['post-id'])
+        throw new Error('update-post requires --post-id <id>');
+      return {
+        command,
+        repo: String(raw['repo']),
+        postId: String(raw['post-id']),
+        title: raw['title'] ? String(raw['title']) : undefined,
+        content: raw['content'] ? String(raw['content']) : undefined,
+        tags: raw['tags'] ? String(raw['tags']) : undefined,
+        status: raw['status'] ? String(raw['status']) : undefined,
+        blogServerUrl,
+      };
+    }
     default:
       throw new Error(
         `Unknown command: "${command}"\n` +
           'Usage: blog-cli <command> [options]\n' +
-          'Commands: branch-entry, daily-summary, chat, config, register-repo, list, get, search, stats, delete, unregister-repo, list-repos, export',
+          'Commands: branch-entry, daily-summary, chat, config, register-repo, list, get, search, stats, delete, unregister-repo, list-repos, export, list-threads, get-thread, update-post',
       );
   }
 }
@@ -889,6 +935,93 @@ export async function runExportCommand(args: ParsedArgs): Promise<void> {
   }
 }
 
+// ─── K.1 list-threads command ─────────────────────────────────────────────
+
+/**
+ * blog-cli list-threads --repo owner/repo [--limit N] [--cursor CURSOR] [--json]
+ */
+export async function runListThreadsCommand(args: ParsedArgs): Promise<void> {
+  const params: Record<string, unknown> = {
+    repoKey: args.repo,
+    limit: args.limit ?? 20,
+  };
+  if (args.cursor) params['cursor'] = args.cursor;
+
+  const result = await callMcpTool(args.blogServerUrl, 'list_threads', params);
+
+  if (args.json) {
+    console.log(JSON.stringify(result, null, 2));
+    return;
+  }
+
+  const { threads, cursor } = result as {
+    threads: Array<Record<string, unknown>>;
+    cursor?: string;
+  };
+  if (!threads?.length) {
+    console.log('No threads found.');
+    return;
+  }
+
+  console.log('THREAD-ID'.padEnd(20), 'POSTS'.padEnd(6), 'FIRST-POST');
+  console.log('-'.repeat(80));
+  for (const thread of threads) {
+    const id = (thread['id'] as string ?? '').slice(0, 18).padEnd(20);
+    const postCount = String(thread['postCount'] ?? 0).padEnd(6);
+    const firstPostTitle = ((thread['firstPostTitle'] as string) ?? '').slice(0, 48);
+    console.log(`${id}  ${postCount}  ${firstPostTitle}`);
+  }
+  if (cursor) console.log(`\n[Cursor for next page: ${cursor}]`);
+}
+
+// ─── K.2 get-thread command ───────────────────────────────────────────────
+
+/**
+ * blog-cli get-thread --repo owner/repo --thread-id <id> [--json]
+ */
+export async function runGetThreadCommand(args: ParsedArgs): Promise<void> {
+  if (!args.threadId) throw new Error('get-thread requires --thread-id <id>');
+  const result = await callMcpTool(args.blogServerUrl, 'get_thread', {
+    repoKey: args.repo,
+    threadId: args.threadId,
+  });
+  if (args.json) {
+    console.log(JSON.stringify(result, null, 2));
+    return;
+  }
+  const { thread } = result as { thread: Record<string, unknown> };
+  console.log(`Thread: ${thread['id'] ?? args.threadId}`);
+  const posts = (thread['posts'] as Array<Record<string, unknown>> | undefined) ?? [];
+  console.log(`Posts (${posts.length}):`);
+  for (const post of posts) {
+    console.log(`  [${post['createdAt'] as string ?? ''}] ${post['title'] as string ?? ''}`);
+    console.log(`    ${String(post['content'] ?? '').slice(0, 100)}`);
+  }
+}
+
+// ─── K.3 update-post command ──────────────────────────────────────────────
+
+/**
+ * blog-cli update-post --repo owner/repo --post-id <id>
+ *   [--title "title"] [--content "content"] [--tags tag1,tag2] [--status published|draft]
+ */
+export async function runUpdatePostCommand(args: ParsedArgs): Promise<void> {
+  if (!args.postId) throw new Error('update-post requires --post-id <id>');
+  const params: Record<string, unknown> = {
+    repoKey: args.repo,
+    postId: args.postId,
+  };
+  if (args.title) params['title'] = args.title;
+  if (args.content) params['content'] = args.content;
+  if (args.tags) params['tags'] = args.tags.split(',').map((t) => t.trim());
+  if (args.status) params['status'] = args.status;
+
+  const result = await callMcpTool(args.blogServerUrl, 'update_post', params);
+  const { ok, postId } = result as { ok: boolean; postId: string };
+  if (!ok) throw new Error(`Update failed: ${JSON.stringify(result)}`);
+  console.log(`Updated post ${postId}`);
+}
+
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
 export async function main(argv = process.argv.slice(2)): Promise<void> {
@@ -940,6 +1073,15 @@ export async function main(argv = process.argv.slice(2)): Promise<void> {
         break;
       case 'export':
         await runExportCommand(parsed);
+        break;
+      case 'list-threads':
+        await runListThreadsCommand(parsed);
+        break;
+      case 'get-thread':
+        await runGetThreadCommand(parsed);
+        break;
+      case 'update-post':
+        await runUpdatePostCommand(parsed);
         break;
     }
   } catch (err) {

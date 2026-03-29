@@ -18,15 +18,25 @@ ALLOWED_ORIGINS=https://your-app.firebaseapp.com,https://your-app.web.app
 
 ### Variable Reference
 
-| Variable             | Default                             | Required        | Description                                                                |
-| -------------------- | ----------------------------------- | --------------- | -------------------------------------------------------------------------- |
-| `PORT`               | `8081`                              | No              | Blog MCP server HTTP port                                                  |
-| `NODE_ENV`           | `development`                       | No              | `development` (CORS open) or `production` (CORS restricted)                |
-| `AGENT_ID`           | `blog-mcp-server`                   | No              | Identifier prepended to log lines                                          |
-| `ANTHROPIC_API_KEY`  | _(none)_                            | For editor pass | API key for the top-level Sonnet editor rewrite                            |
-| `ANTHROPIC_BASE_URL` | `https://api.anthropic.com`         | No              | Base URL for the editor LLM (override for proxies or custom endpoints)     |
-| `ALLOWED_ORIGINS`    | `*` (dev) / Firebase domains (prod) | No              | Comma-separated list of allowed CORS origins                               |
-| `DATA_DIR`           | _(none)_                            | No              | Planned: JSON-file persistence path for `MemoryBlogStorage` (not yet implemented) |
+| Variable                  | Default                          | Required        | Description                                                                                   |
+| ------------------------- | -------------------------------- | --------------- | --------------------------------------------------------------------------------------------- |
+| `PORT`                    | `8081`                           | No              | Blog MCP server HTTP port                                                                     |
+| `NODE_ENV`                | `development`                    | No              | `development` (CORS open) or `production` (CORS restricted)                                   |
+| `AGENT_ID`                | `blog-mcp-server`                | No              | Identifier prepended to log lines                                                             |
+| `ANTHROPIC_API_KEY`       | _(none)_                         | For editor pass | API key for the top-level Sonnet editor rewrite                                               |
+| `ANTHROPIC_BASE_URL`      | `https://api.anthropic.com`       | No              | Base URL for the editor LLM (override for proxies or custom endpoints)                       |
+| `ALLOWED_ORIGINS`         | `*` (dev) / Firebase domains (prod) | No           | Comma-separated list of allowed CORS origins                                                  |
+| `DATA_DIR`                | `data/`                           | No              | Directory for JSON persistence: `repos.json`, `api-keys.json`, `scan-cursor.json`              |
+| `API_KEY`                 | _(none)_                          | No              | Auto-registers at startup with `user` scope; activates auth when set                      |
+| `API_KEYS_FILE`            | _(none)_                          | No              | Set to any value to enable auth — keys are loaded from `DATA_DIR/api-keys.json` (future: custom path) |
+| `MASTER_API_KEY`           | _(none)_                          | No              | Auto-registers with admin scope; convenient for initial setup                                 |
+| `AUTO_SCAN_ENABLED`       | `false`                           | No              | Enable AutoScanner polling when `true`                                                         |
+| `AUTO_SCAN_INTERVAL_MS`   | `60000`                           | No              | AutoScanner polling interval in milliseconds                                                   |
+| `GITHUB_TOKEN`            | _(none)_                          | For AutoScan    | GitHub personal access token for polling (REST only, no GraphQL)                             |
+| `WEBHOOK_SECRET`           | _(none)_                          | No              | HMAC-SHA256 secret for GitHub webhook signature validation                                     |
+| `FIRESTORE_PROJECT_ID`     | _(none)_                          | No              | GCP project ID for Firestore storage (activates FirestoreBlogStorage)                        |
+| `FIRESTORE_COLLECTION`     | `posts`                           | No              | Firestore collection name for blog posts                                                      |
+| `STORAGE_TYPE`             | `memory`                          | No              | `memory` (default) or `firestore`                                                             |
 
 ### NODE_ENV and CORS
 
@@ -37,9 +47,23 @@ In `development` mode, the server accepts requests from any origin (`*`). In `pr
 ALLOWED_ORIGINS=https://app.example.com,https://staging.example.com NODE_ENV=production node dist/blog/server.js
 ```
 
-### DATA_DIR for JSON Persistence (planned)
+### DATA_DIR for JSON Persistence
 
-`MemoryBlogStorage` operates entirely in-memory by default. JSON-file persistence via `DATA_DIR` is planned — see `docs/ARCHITECTURE.md` for the swap-to-Firestore path when production persistence is needed.
+`DATA_DIR` (default: `data/`) is the directory for JSON-file state used by the Remote Mode components:
+
+| File               | What it stores                                              |
+| ------------------ | ----------------------------------------------------------- |
+| `repos.json`       | Registered repos and their mode configurations             |
+| `api-keys.json`    | Hashed API keys with scopes and labels                      |
+| `scan-cursor.json` | AutoScanner polling cursor (last event ID + daily date per repo) |
+
+**All files are created automatically on first use.** Set `DATA_DIR` to an absolute path in production:
+
+```bash
+DATA_DIR=/var/lib/blog-server/data node dist/blog/server.js
+```
+
+See `docs/ARCHITECTURE.md` for the swap-to-Firestore path when shared persistence across instances is needed.
 
 ---
 

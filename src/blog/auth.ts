@@ -11,6 +11,7 @@ import { createHash, timingSafeEqual } from 'crypto';
 import { readFileSync, writeFileSync, mkdirSync } from 'fs';
 import { join } from 'path';
 import type { Request, Response, NextFunction } from 'express';
+import { logger } from '../shared/logger.js';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -46,11 +47,27 @@ export function verifyKey(plaintext: string, storedHash: string): boolean {
 
 const API_KEYS_FILE = 'api-keys.json';
 
+const VALID_SCOPES = new Set(['read', 'write', 'admin']);
+
+function isApiKeyEntry(val: unknown): val is ApiKey {
+  if (typeof val !== 'object' || val === null) return false;
+  const o = val as Record<string, unknown>;
+  return (
+    typeof o['key'] === 'string' &&
+    typeof o['label'] === 'string' &&
+    Array.isArray(o['scopes']) &&
+    (o['scopes'] as unknown[]).every((s) => typeof s === 'string' && VALID_SCOPES.has(s)) &&
+    typeof o['createdAt'] === 'string'
+  );
+}
+
 export function loadApiKeys(dataDir: string): ApiKey[] {
   const file = join(dataDir, API_KEYS_FILE);
   try {
     const raw = readFileSync(file, 'utf-8');
-    return JSON.parse(raw) as ApiKey[];
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter(isApiKeyEntry);
   } catch {
     return [];
   }
@@ -60,6 +77,29 @@ export function saveApiKeys(keys: ApiKey[], dataDir: string): void {
   mkdirSync(dataDir, { recursive: true });
   const file = join(dataDir, API_KEYS_FILE);
   writeFileSync(file, JSON.stringify(keys, null, 2), 'utf-8');
+}
+
+// ─── Serialized mutation ──────────────────────────────────────────────────────
+
+/**
+ * Serialize all API-key mutations through a single queue so concurrent
+ * calls from `requireApiKey` (lastUsedAt updates) and `generate_api_key`
+ * never overwrite each other's writes.
+ */
+let _apiKeyMutexChain: Promise<void> = Promise.resolve();
+
+export function mutateApiKeys(
+  dataDir: string,
+  mutate: (keys: ApiKey[]) => ApiKey[],
+): Promise<void> {
+  _apiKeyMutexChain = _apiKeyMutexChain.then(() => {
+    const keys = loadApiKeys(dataDir);
+    const updated = mutate(keys);
+    saveApiKeys(updated, dataDir);
+  }).catch((err) => {
+    logger.warn('mutateApiKeys: write failed', { err, dataDir });
+  });
+  return _apiKeyMutexChain;
 }
 
 // ─── Scope helpers ────────────────────────────────────────────────────────────
@@ -104,10 +144,14 @@ export function requireApiKey(dataDir: string, requiredScope?: string) {
       return;
     }
 
-    // Persist lastUsedAt so keys can be tracked
-    matched.lastUsedAt = new Date().toISOString();
-    const updated = validKeys.map((k) => (k.key === matched.key ? matched : k));
-    saveApiKeys(updated, dataDir);
+    // Persist lastUsedAt through the serialized mutation queue so concurrent
+    // writes from generate_api_key don't overwrite each other.
+    const matchedKey = matched.key;
+    const lastUsedAt = new Date().toISOString();
+    matched.lastUsedAt = lastUsedAt;
+    void mutateApiKeys(dataDir, (keys) =>
+      keys.map((k) => (k.key === matchedKey ? { ...k, lastUsedAt } : k)),
+    );
     res.locals.apiKey = matched;
     next();
   };

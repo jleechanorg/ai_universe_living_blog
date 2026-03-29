@@ -150,19 +150,20 @@ export function createWebhookHandler(
     let payload: Record<string, unknown>;
     try {
       payload = typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
+      if (typeof payload !== 'object' || payload === null || Array.isArray(payload)) {
+        res.status(400).json({ error: 'Invalid JSON payload' });
+        return;
+      }
     } catch {
       res.status(400).json({ error: 'Invalid JSON payload' });
       return;
     }
 
-    // Extract repo from payload
+    // Extract repo from payload — must have exactly owner/name format
     const repoObj = payload.repository as Record<string, unknown> | undefined;
-    const repo =
-      typeof repoObj?.full_name === 'string'
-        ? repoObj.full_name
-        : typeof repoObj?.name === 'string'
-          ? repoObj.name
-          : '';
+    const REPO_KEY_RE = /^[^\\/\s]+\/[^\\/\s]+$/;
+    const fullName = typeof repoObj?.full_name === 'string' ? repoObj.full_name.trim() : '';
+    const repo = REPO_KEY_RE.test(fullName) ? fullName : '';
 
     if (!repo) {
       res.status(400).json({ error: 'Could not determine repo from payload' });

@@ -12,7 +12,7 @@ import {
 } from '../shared/types.js';
 import { logger } from '../shared/logger.js';
 import { RepoRegistry, type RepoConfig } from './repo-registry.js';
-import { hashKey, loadApiKeys, saveApiKeys, type ApiKey } from './auth.js';
+import { hashKey, mutateApiKeys, type ApiKey } from './auth.js';
 
 // ─── Tool parameter schemas ────────────────────────────────────────────────────
 
@@ -401,15 +401,13 @@ export function createBlogToolHandlers(ctx: BlogToolContext) {
         // Generate random 32-byte hex key (64 chars)
         const plaintext = randomBytes(32).toString('hex');
         const hashed = hashKey(plaintext);
-        const keys = loadApiKeys(ctx.dataDir);
         const entry: ApiKey = {
           key: hashed,
           label: params.label,
           scopes: params.scopes,
           createdAt: new Date().toISOString(),
         };
-        keys.push(entry);
-        saveApiKeys(keys, ctx.dataDir);
+        await mutateApiKeys(ctx.dataDir, (keys) => [...keys, entry]);
         return toMcpResult({
           key: plaintext,
           label: entry.label,

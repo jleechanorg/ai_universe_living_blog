@@ -10,11 +10,15 @@ import type {
 } from '../shared/types.js';
 import { PosterSchema, PostSchema, encodeRepoKey } from '../shared/types.js';
 import { logger } from '../shared/logger.js';
+import { readFileSync, writeFileSync, existsSync, mkdirSync, renameSync, unlinkSync } from 'node:fs';
 
 /**
- * In-memory blog storage.
+ * In-memory blog storage with optional file persistence.
  * Swap for FirestoreBlogStorage for production persistence — the BlogStorage interface
  * is storage-engine agnostic.  Zero-config for local dev — no Firebase credentials required.
+ *
+ * When BLOG_DATA_DIR is set, posts are persisted to $BLOG_DATA_DIR/posts.jsonl
+ * so they survive server restarts and can be read by external scripts (e.g. daily Remotion render).
  */
 export class MemoryBlogStorage implements BlogStorage {
   private posters = new Map<string, Poster>();
@@ -29,8 +33,69 @@ export class MemoryBlogStorage implements BlogStorage {
   // Monotonic counter for stable sort when timestamps collide
   private postSeq = 0;
 
+  /** Directory for file persistence. Undefined = no persistence. */
+  private readonly dataDir: string | undefined;
+
   constructor() {
-    logger.info('MemoryBlogStorage initialized (zero-config dev mode)');
+    this.dataDir = process.env['BLOG_DATA_DIR'] ?? process.env['DATA_DIR'];
+    if (this.dataDir) {
+      mkdirSync(this.dataDir, { recursive: true });
+      this.loadPosts();
+    }
+    logger.info('MemoryBlogStorage initialized', {
+      mode: this.dataDir ? `persisted@${this.dataDir}` : 'in-memory-only',
+    });
+  }
+
+  // ─── Persistence ─────────────────────────────────────────────────────────
+
+  private postsPath(): string {
+    return `${this.dataDir}/posts.jsonl`;
+  }
+
+  private persistPosts(): void {
+    if (!this.dataDir) return;
+    const lines = Array.from(this.posts.values())
+      .map((p) => JSON.stringify(p))
+      .join('\n');
+    // Atomic write: write to tmp file then rename to avoid corruption on crash
+    const tmpPath = `${this.postsPath()}.tmp-${process.pid}-${Date.now()}`;
+    try {
+      writeFileSync(tmpPath, lines, 'utf8');
+      renameSync(tmpPath, this.postsPath());
+      logger.debug('Posts persisted', { count: this.posts.size });
+    } catch (err) {
+      try { unlinkSync(tmpPath); } catch { /* best-effort cleanup */ }
+      throw err;
+    }
+  }
+
+  private loadPosts(): void {
+    const filePath = this.postsPath();
+    if (!existsSync(filePath)) {
+      logger.debug('No posts file found, starting fresh');
+      return;
+    }
+    const raw = readFileSync(filePath, 'utf8');
+    const lines = raw.split('\n').filter(Boolean);
+    for (const line of lines) {
+      try {
+        const post = PostSchema.parse(JSON.parse(line)) as Post;
+        this.posts.set(post.id, post);
+        this.indexPost(post);
+      } catch (err) {
+        logger.warn('Failed to parse post from posts.jsonl', { line: line.slice(0, 80), err: String(err) });
+      }
+    }
+    logger.info('Posts loaded from disk', { count: this.posts.size });
+  }
+
+  private indexPost(post: Post): void {
+    const repoKeyEnc = encodeRepoKey(post.repoKey);
+    if (!this.repoPosts.has(repoKeyEnc)) this.repoPosts.set(repoKeyEnc, new Set());
+    this.repoPosts.get(repoKeyEnc)!.add(post.id);
+    if (!this.threadPosts.has(post.threadId)) this.threadPosts.set(post.threadId, new Set());
+    this.threadPosts.get(post.threadId)!.add(post.id);
   }
 
   // ─── Poster ────────────────────────────────────────────────────────────────
@@ -60,16 +125,8 @@ export class MemoryBlogStorage implements BlogStorage {
     this.postSeq++;
     (validated as Post & { seq: number }).seq = this.postSeq;
     this.posts.set(validated.id, validated);
-
-    const repoKeyEnc = encodeRepoKey(validated.repoKey);
-    if (!this.repoPosts.has(repoKeyEnc)) this.repoPosts.set(repoKeyEnc, new Set());
-    this.repoPosts.get(repoKeyEnc)!.add(validated.id);
-
-    if (!this.threadPosts.has(validated.threadId)) {
-      this.threadPosts.set(validated.threadId, new Set());
-    }
-    this.threadPosts.get(validated.threadId)!.add(validated.id);
-
+    this.indexPost(validated);
+    this.persistPosts();
     logger.debug('Post created', { id: validated.id, repoKey: validated.repoKey, eventType: validated.eventType });
     return validated;
   }
@@ -91,6 +148,7 @@ export class MemoryBlogStorage implements BlogStorage {
     }
     const updated: Post = { ...existing, ...updates, updatedAt: new Date().toISOString() };
     this.posts.set(id, updated);
+    this.persistPosts();
     logger.debug('Post updated', { id });
     return updated;
   }

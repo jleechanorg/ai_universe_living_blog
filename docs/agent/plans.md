@@ -10,12 +10,14 @@ source_of_truth: GitHub PR list
 
 ## Open PRs
 
-None — all design doc sections (A–H) are implemented and merged.
+- **Section K (jc-1290):** blog-cli list-threads/get-thread/update-post → target 431 tests
 
 ## Completed Milestones
 
 | PR | Title |
 |----|-------|
+| #40 | feat(cli): Section J — blog-cli delete/unregister-repo/list-repos/export |
+| #39 | feat(blog): Section I — webhook idempotency + optional X-API-Key auth |
 | #38 | feat(blog): Section H — CLI read commands + export_repo + replay_event |
 | #37 | feat(blog): Section G — search, delete, stats, metrics, Firestore emulator |
 | #36 | test(scanner): AutoScanner full poll-cycle integration tests (10 tests) |
@@ -32,16 +34,20 @@ None — all design doc sections (A–H) are implemented and merged.
 
 ## Current State
 
-- **Tests:** 400 passing | 1 skipped (32 files) — 1 skipped requires ANTHROPIC_API_KEY
+- **Tests:** 421 total (413 passing, 8 skipped) — 6 skip require Firestore emulator, 1 requires ANTHROPIC_API_KEY, 1 storage-factory Firestore
 - **TDD roadmap coverage:** 100% (Phases 1–5 from `docs/plans/2026-03-27-tdd-roadmap.md`)
-- **Design doc coverage:** 100% (Sections A–H)
+- **Design doc coverage:** 100% (Sections A–K planned)
 - **Auto-merge:** Skeptic cron runs every 30 min, merges on CI + MERGEABLE + no CHANGES_REQUESTED
 - **Storage backends:** memory (default), file (STORAGE_TYPE=file), firestore (STORAGE_TYPE=firestore)
 - **GitHub Actions:** ci.yml, skeptic-cron.yml, skeptic-gate.yml, novel-entry.yml, daily-summary.yml
 - **Firestore emulator:** running in CI via Java 21 + firebase-tools (G)
 - **CLI read commands:** blog-cli list/get/search/stats (H)
+- **CLI write commands:** blog-cli delete/unregister-repo/list-repos/export (J)
+- **CLI thread commands:** blog-cli list-threads/get-thread/update-post (K — in progress)
 - **Data tools:** export_repo, replay_event (H); search_posts, delete_post, get_repo_stats (G)
 - **Observability:** GET /metrics Prometheus endpoint (G)
+- **Auth:** optional X-API-Key via AUTH_API_KEY env var (I)
+- **Idempotency:** webhook delivery_id deduplication via X-GitHub-Delivery (I)
 
 ## Known Gaps (resolved)
 
@@ -55,6 +61,6 @@ None — all design doc sections (A–H) are implemented and merged.
 
 ## Next Steps
 
-1. Monitor Firestore integration in production (ADC / emulator tested locally)
+1. Merge Section K (jc-1290) — blog-cli list-threads/get-thread/update-post → 431 tests
 2. Consider enabling `ANTHROPIC_API_KEY` as a repo secret to activate novel editor pass in GHA (un-skips 1 test)
-3. Section I: webhook idempotency (delivery_id deduplication) + optional X-API-Key auth enforcement
+3. Post-K: roadmap largely complete — all 19 MCP tools have CLI surface, full auth + idempotency, Firestore in CI

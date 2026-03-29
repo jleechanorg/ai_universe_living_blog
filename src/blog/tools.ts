@@ -137,12 +137,30 @@ export const SearchPostsParamsSchema = z.object({
   cursor: z.string().optional(),
 });
 
+export const ExportRepoParamsSchema = z.object({
+  repoKey: RepoKeySchema,
+  format: z.enum(['json']).default('json'),
+  includeThreads: z.boolean().default(true),
+});
+
+export const ReplayEventParamsSchema = z.object({
+  repoKey: RepoKeySchema,
+  eventType: PostEventTypeSchema,
+  prNumber: z.number().int().positive(),
+  sessionId: z.string().optional(),
+  title: z.string().optional(),
+  content: z.string().optional(),
+});
+
 /**
  * Blog MCP tools — each returns MCP-compatible { content, isError }.
  * The server wraps these with BlogToolContext via closure.
  */
 export function createBlogToolHandlers(ctx: BlogToolContext) {
-  return {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  type ToolFn = (rawParams?: any) => Promise<{ content: { type: 'text'; text: string }[]; isError: boolean }>;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const handlers = Object.assign({} as Record<string, ToolFn>, {
     async create_post(rawParams: unknown) {
       try {
         const params = await CreatePostParamsSchema.parseAsync(rawParams);
@@ -718,7 +736,95 @@ export function createBlogToolHandlers(ctx: BlogToolContext) {
         return toMcpError(String(err));
       }
     },
+  });
+
+  // ─── H.5 export_repo (must be added after handlers is defined) ───────────
+
+  handlers.export_repo = async function export_repo(rawParams: unknown) {
+    try {
+      const params = await ExportRepoParamsSchema.parseAsync(rawParams);
+
+      const allPosts: Post[] = [];
+      let cursor: string | undefined;
+      do {
+        const page = await ctx.storage.listPosts({
+          repoKey: params.repoKey as RepoKey,
+          limit: 1000,
+          cursor,
+        });
+        allPosts.push(...page.posts);
+        cursor = page.cursor;
+      } while (cursor);
+
+      const threads: Thread[] = [];
+      if (params.includeThreads) {
+        let threadCursor: string | undefined;
+        do {
+          const page = await ctx.storage.listThreads({
+            repoKey: params.repoKey as RepoKey,
+            limit: 1000,
+            cursor: threadCursor,
+          });
+          threads.push(...page.threads);
+          threadCursor = page.cursor;
+        } while (threadCursor);
+      }
+
+      return toMcpResult({
+        repoKey: params.repoKey,
+        exportedAt: new Date().toISOString(),
+        postCount: allPosts.length,
+        threadCount: threads.length,
+        data: { posts: allPosts, threads },
+      });
+    } catch (err) {
+      return toMcpError(err instanceof z.ZodError
+        ? err.errors.map((e) => `${e.path.join('.')}: ${e.message}`).join('; ')
+        : String(err));
+    }
   };
+
+  // ─── H.6 replay_event ───────────────────────────────────────────────────
+
+  handlers.replay_event = async function replay_event(rawParams: unknown) {
+    try {
+      const params = await ReplayEventParamsSchema.parseAsync(rawParams);
+
+      // Validate repoKey is registered (required per design spec H.6)
+      if (ctx.registry && !ctx.registry.get(params.repoKey)) {
+        return toMcpError(`Repo not found: ${params.repoKey}`);
+      }
+
+      const sessionId = params.sessionId ?? 'replay';
+      const title = params.title ?? `Replay: event ${params.eventType} on PR #${params.prNumber}`;
+      const content = params.content ?? `Replayed ${params.eventType} event for PR #${params.prNumber}.`;
+
+      const result = await handlers.create_post({
+        repoKey: params.repoKey,
+        posterId: sessionId,
+        title,
+        content,
+        eventType: params.eventType,
+        tags: ['replay'],
+        metadata: { prNumber: params.prNumber },
+      });
+
+      if (result.isError) return result;
+
+      const parsed = JSON.parse((result.content[0] as { text: string }).text);
+      return toMcpResult({
+        ok: true,
+        postId: parsed.post?.id ?? parsed.postId,
+        replayed: true,
+      });
+    } catch (err) {
+      return toMcpError(err instanceof z.ZodError
+        ? err.errors.map((e) => `${e.path.join('.')}: ${e.message}`).join('; ')
+        : String(err));
+    }
+  };
+
+  return handlers;
 }
 
 export type BlogToolName = keyof ReturnType<typeof createBlogToolHandlers>;

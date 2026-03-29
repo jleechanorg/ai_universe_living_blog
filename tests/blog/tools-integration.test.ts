@@ -1007,3 +1007,147 @@ describe('search_posts tool', () => {
     expect(parsed.posts).toHaveLength(0);
   });
 });
+
+// ─── H.5 export_repo ───────────────────────────────────────────────────────
+
+describe('export_repo tool', () => {
+  let tools: ReturnType<typeof createBlogToolHandlers>;
+
+  beforeEach(() => {
+    const setup = makeCtx();
+    tools = setup.tools;
+  });
+
+  // H.5 test 1
+  it('returns all posts and threads for a repo', async () => {
+    await tools.create_post({
+      repoKey: 'jleechanorg/ai_universe_living_blog',
+      posterId: 'ao-worker-1',
+      title: 'PR #1 opened',
+      content: 'A PR was opened.',
+      eventType: 'pr_created',
+    });
+    await tools.create_post({
+      repoKey: 'jleechanorg/ai_universe_living_blog',
+      posterId: 'ao-worker-1',
+      title: 'PR #2 opened',
+      content: 'Another PR.',
+      eventType: 'pr_created',
+    });
+
+    const result = await tools.export_repo({ repoKey: 'jleechanorg/ai_universe_living_blog' });
+    expect(result.isError).toBe(false);
+    const parsed = parseResult(result);
+    expect(parsed.postCount).toBe(2);
+    expect(parsed.threadCount).toBe(2);
+    expect(parsed.data.posts).toHaveLength(2);
+    expect(parsed.data.threads).toHaveLength(2);
+    expect(parsed.repoKey).toBe('jleechanorg/ai_universe_living_blog');
+    expect(parsed.exportedAt).toBeDefined();
+  });
+
+  // H.5 test 2
+  it('does not return posts from other repos', async () => {
+    await tools.create_post({
+      repoKey: 'jleechanorg/ai_universe_living_blog',
+      posterId: 'ao-worker-1',
+      title: 'Post in blog',
+      content: 'Content.',
+      eventType: 'pr_created',
+    });
+    await tools.create_post({
+      repoKey: 'other/repo',
+      posterId: 'ao-worker-1',
+      title: 'Post in other',
+      content: 'Content.',
+      eventType: 'pr_created',
+    });
+
+    const result = await tools.export_repo({ repoKey: 'jleechanorg/ai_universe_living_blog' });
+    const parsed = parseResult(result);
+    expect(parsed.postCount).toBe(1);
+    expect(parsed.data.posts[0].title).toBe('Post in blog');
+  });
+
+  // H.5 test 3
+  it('includeThreads: false omits threads', async () => {
+    await tools.create_post({
+      repoKey: 'jleechanorg/ai_universe_living_blog',
+      posterId: 'ao-worker-1',
+      title: 'Post',
+      content: 'Content.',
+      eventType: 'pr_created',
+    });
+
+    const result = await tools.export_repo({ repoKey: 'jleechanorg/ai_universe_living_blog', includeThreads: false });
+    const parsed = parseResult(result);
+    expect(parsed.postCount).toBe(1);
+    expect(parsed.threadCount).toBe(0);
+    expect(parsed.data.posts).toHaveLength(1);
+    expect(parsed.data.threads).toHaveLength(0);
+  });
+});
+
+// ─── H.6 replay_event ──────────────────────────────────────────────────────
+
+describe('replay_event tool', () => {
+  let tools: ReturnType<typeof createBlogToolHandlers>;
+  let ctx: BlogToolContext;
+
+  beforeEach(() => {
+    const setup = makeCtx();
+    tools = setup.tools;
+    ctx = setup.ctx;
+  });
+
+  // H.6 test 1
+  it('creates a post from a replayed event', async () => {
+    // Register the repo (required per design spec H.6)
+    await tools.register_repo({
+      repoKey: 'jleechanorg/ai_universe_living_blog',
+      enabled: true,
+      modes: { autoScan: false, novelBranch: false, novelDaily: false },
+    });
+
+    const result = await tools.replay_event({
+      repoKey: 'jleechanorg/ai_universe_living_blog',
+      eventType: 'pr_created',
+      prNumber: 42,
+      sessionId: 'replay-test',
+      title: 'Replay: PR #42 opened',
+      content: 'This event was replayed.',
+    });
+
+    expect(result.isError).toBe(false);
+    const parsed = parseResult(result);
+    expect(parsed.ok).toBe(true);
+    expect(parsed.replayed).toBe(true);
+    expect(parsed.postId).toBeDefined();
+
+    // Verify the post was actually created
+    const getResult = await tools.get_post({
+      repoKey: 'jleechanorg/ai_universe_living_blog',
+      postId: parsed.postId,
+    });
+    expect(getResult.isError).toBe(false);
+    const post = parseResult(getResult);
+    expect(post.title).toBe('Replay: PR #42 opened');
+    expect(post.eventType).toBe('pr_created');
+  });
+
+  // H.6 test 4
+  it('replay with unknown repoKey returns error', async () => {
+    const result = await tools.replay_event({
+      repoKey: 'nonexistent/repo',
+      eventType: 'pr_created',
+      prNumber: 1,
+      sessionId: 'replay',
+      title: 'Test',
+      content: 'Test content.',
+    });
+
+    expect(result.isError).toBe(true);
+    const parsed = parseResult(result);
+    expect(parsed.error).toContain('not found');
+  });
+});

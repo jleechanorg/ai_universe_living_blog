@@ -51,6 +51,18 @@ export interface ParsedArgs {
   token?: string;
   autoScan?: boolean;
   novelBranch?: boolean;
+  // list
+  limit?: number;
+  cursor?: string;
+  eventType?: string;
+  json?: boolean;
+  // get
+  postId?: string;
+  // search
+  q?: string;
+  tags?: string;
+  // stats
+  days?: number;
   // env overrides
   blogServerUrl: string;
 }
@@ -103,7 +115,7 @@ export function parseArgs(argv: string[]): ParsedArgs {
   if (!command || command.startsWith('--')) {
     throw new Error(
       'Usage: blog-cli <command> [options]\n' +
-        'Commands: branch-entry, daily-summary, chat, config, register-repo',
+        'Commands: branch-entry, daily-summary, chat, config, register-repo, list, get, search, stats',
     );
   }
 
@@ -180,11 +192,60 @@ export function parseArgs(argv: string[]): ParsedArgs {
         blogServerUrl,
       };
     }
+    case 'list': {
+      if (!raw['repo'])
+        throw new Error('list requires --repo <owner/repo>');
+      return {
+        command,
+        repo: String(raw['repo']),
+        limit: raw['limit'] ? parseInt(String(raw['limit']), 10) : undefined,
+        cursor: raw['cursor'] ? String(raw['cursor']) : undefined,
+        eventType: raw['event-type'] ? String(raw['event-type']) : undefined,
+        json: Boolean(raw['json']),
+        blogServerUrl,
+      };
+    }
+    case 'get': {
+      if (!raw['repo'])
+        throw new Error('get requires --repo <owner/repo>');
+      if (!raw['post-id'])
+        throw new Error('get requires --post-id <id>');
+      return {
+        command,
+        repo: String(raw['repo']),
+        postId: String(raw['post-id']),
+        blogServerUrl,
+      };
+    }
+    case 'search': {
+      if (!raw['repo'])
+        throw new Error('search requires --repo <owner/repo>');
+      if (!raw['q'])
+        throw new Error('search requires --q <keyword>');
+      return {
+        command,
+        repo: String(raw['repo']),
+        q: String(raw['q']),
+        tags: raw['tags'] ? String(raw['tags']) : undefined,
+        limit: raw['limit'] ? parseInt(String(raw['limit']), 10) : undefined,
+        blogServerUrl,
+      };
+    }
+    case 'stats': {
+      if (!raw['repo'])
+        throw new Error('stats requires --repo <owner/repo>');
+      return {
+        command,
+        repo: String(raw['repo']),
+        days: raw['days'] ? parseInt(String(raw['days']), 10) : undefined,
+        blogServerUrl,
+      };
+    }
     default:
       throw new Error(
         `Unknown command: "${command}"\n` +
           'Usage: blog-cli <command> [options]\n' +
-          'Commands: branch-entry, daily-summary, chat, config, register-repo',
+          'Commands: branch-entry, daily-summary, chat, config, register-repo, list, get, search, stats',
       );
   }
 }
@@ -574,6 +635,146 @@ export async function runRegisterRepoCommand(args: ParsedArgs): Promise<void> {
   console.log(JSON.stringify(data, null, 2));
 }
 
+// ─── H.1 list command ──────────────────────────────────────────────────────
+
+async function callMcpTool(
+  blogServerUrl: string,
+  toolName: string,
+  params: Record<string, unknown>,
+): Promise<Record<string, unknown>> {
+  const url = `${blogServerUrl}/mcp`;
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: toolName, params }),
+  });
+  if (!res.ok) throw new Error(`MCP server returned ${res.status}: ${await res.text()}`);
+  const data = (await res.json()) as Record<string, unknown>;
+  const result = data.result as Record<string, unknown> | undefined;
+  const content = result?.content as Array<Record<string, unknown>> | undefined;
+  const text = content?.[0]?.text as string | undefined;
+  if (!text) throw new Error(`MCP tool ${toolName} returned no content`);
+  const parsed = JSON.parse(text) as Record<string, unknown>;
+  if (result?.isError || parsed.error) {
+    throw new Error(String(parsed.error ?? 'MCP tool returned error'));
+  }
+  return parsed;
+}
+
+/**
+ * blog-cli list --repo owner/repo [--limit N] [--cursor ID] [--event-type TYPE] [--json]
+ */
+export async function runListCommand(args: ParsedArgs): Promise<void> {
+  const params: Record<string, unknown> = {
+    repoKey: args.repo,
+    limit: args.limit ?? 20,
+  };
+  if (args.cursor) params['cursor'] = args.cursor;
+  if (args.eventType) params['eventType'] = args.eventType;
+
+  const result = await callMcpTool(args.blogServerUrl, 'list_posts', params);
+
+  if (args.json) {
+    console.log(JSON.stringify(result, null, 2));
+    return;
+  }
+
+  const { posts, cursor } = result as { posts: Array<Record<string, unknown>>; cursor?: string };
+  if (!posts?.length) {
+    console.log('No posts found.');
+    return;
+  }
+
+  // Print table: ID | eventType | title | createdAt
+  console.log('ID'.padEnd(38), 'EVENT TYPE'.padEnd(18), 'TITLE'.padEnd(40), 'CREATED AT');
+  console.log('-'.repeat(120));
+  for (const post of posts) {
+    const id = (post['id'] as string ?? '').slice(0, 36);
+    const eventType = (post['eventType'] as string ?? '').padEnd(18);
+    const title = (post['title'] as string ?? '').slice(0, 38).padEnd(40);
+    const createdAt = (post['createdAt'] as string ?? '').slice(0, 10);
+    console.log(`${id}  ${eventType}  ${title}  ${createdAt}`);
+  }
+  if (cursor) console.log(`\n[Cursor for next page: ${cursor}]`);
+}
+
+// ─── H.2 get command ───────────────────────────────────────────────────────
+
+/**
+ * blog-cli get --repo owner/repo --post-id <id>
+ */
+export async function runGetCommand(args: ParsedArgs): Promise<void> {
+  if (!args.postId) throw new Error('get requires --post-id <id>');
+  const result = await callMcpTool(args.blogServerUrl, 'get_post', {
+    repoKey: args.repo,
+    postId: args.postId,
+  });
+  console.log(JSON.stringify(result, null, 2));
+}
+
+// ─── H.3 search command ────────────────────────────────────────────────────
+
+/**
+ * blog-cli search --repo owner/repo --q "keyword" [--tags tag1,tag2] [--limit N]
+ */
+export async function runSearchCommand(args: ParsedArgs): Promise<void> {
+  const params: Record<string, unknown> = {
+    repoKey: args.repo,
+    q: args.q,
+  };
+  if (args.tags) params['tags'] = args.tags.split(',').map((t) => t.trim());
+  if (args.limit) params['limit'] = args.limit;
+
+  const result = await callMcpTool(args.blogServerUrl, 'search_posts', params);
+
+  const { posts, cursor, total } = result as {
+    posts: Array<Record<string, unknown>>;
+    cursor?: string;
+    total: number;
+  };
+
+  if (!posts?.length) {
+    console.log(`No results for "${args.q}".`);
+    return;
+  }
+
+  console.log(`Found ${total} result(s) — showing ${posts.length}:`);
+  console.log('ID'.padEnd(38), 'EVENT TYPE'.padEnd(18), 'TITLE'.padEnd(40), 'CREATED AT');
+  console.log('-'.repeat(120));
+  for (const post of posts) {
+    const id = (post['id'] as string ?? '').slice(0, 36);
+    const eventType = (post['eventType'] as string ?? '').padEnd(18);
+    const title = (post['title'] as string ?? '').slice(0, 38).padEnd(40);
+    const createdAt = (post['createdAt'] as string ?? '').slice(0, 10);
+    console.log(`${id}  ${eventType}  ${title}  ${createdAt}`);
+  }
+  if (cursor) console.log(`\n[Cursor for next page: ${cursor}]`);
+}
+
+// ─── H.4 stats command ─────────────────────────────────────────────────────
+
+/**
+ * blog-cli stats --repo owner/repo [--days N]
+ */
+export async function runStatsCommand(args: ParsedArgs): Promise<void> {
+  const result = await callMcpTool(args.blogServerUrl, 'get_repo_stats', {
+    repoKey: args.repo,
+    days: args.days ?? 7,
+  });
+
+  const days = args.days ?? 7;
+  console.log(`Repo:            ${args.repo}`);
+  console.log(`Total posts:     ${result['totalPosts'] ?? 0}`);
+  console.log(`Total threads:   ${result['totalThreads'] ?? 0}`);
+  console.log(`Posts last ${days}d: ${result[`postsLast${days}Days`] ?? 0}`);
+
+  const topEventTypes = (result['topEventTypes'] as Array<{ eventType: string; count: number }> | undefined) ?? [];
+  if (topEventTypes.length) {
+    const line = topEventTypes.map((e) => `${e.eventType}(${e.count})`).join(', ');
+    console.log(`Top event types: ${line}`);
+  }
+}
+
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
 export async function main(argv = process.argv.slice(2)): Promise<void> {
@@ -601,6 +802,18 @@ export async function main(argv = process.argv.slice(2)): Promise<void> {
         break;
       case 'register-repo':
         await runRegisterRepoCommand(parsed);
+        break;
+      case 'list':
+        await runListCommand(parsed);
+        break;
+      case 'get':
+        await runGetCommand(parsed);
+        break;
+      case 'search':
+        await runSearchCommand(parsed);
+        break;
+      case 'stats':
+        await runStatsCommand(parsed);
         break;
     }
   } catch (err) {

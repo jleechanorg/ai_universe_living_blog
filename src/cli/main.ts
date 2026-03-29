@@ -63,6 +63,8 @@ export interface ParsedArgs {
   tags?: string;
   // stats
   days?: number;
+  // export
+  outputFile?: string;
   // env overrides
   blogServerUrl: string;
 }
@@ -115,7 +117,7 @@ export function parseArgs(argv: string[]): ParsedArgs {
   if (!command || command.startsWith('--')) {
     throw new Error(
       'Usage: blog-cli <command> [options]\n' +
-        'Commands: branch-entry, daily-summary, chat, config, register-repo, list, get, search, stats',
+        'Commands: branch-entry, daily-summary, chat, config, register-repo, list, get, search, stats, delete, unregister-repo, list-repos, export',
     );
   }
 
@@ -241,11 +243,49 @@ export function parseArgs(argv: string[]): ParsedArgs {
         blogServerUrl,
       };
     }
+    case 'delete': {
+      if (!raw['repo'])
+        throw new Error('delete requires --repo <owner/repo>');
+      if (!raw['post-id'])
+        throw new Error('delete requires --post-id <id>');
+      return {
+        command,
+        repo: String(raw['repo']),
+        postId: String(raw['post-id']),
+        blogServerUrl,
+      };
+    }
+    case 'unregister-repo': {
+      if (!raw['repo'])
+        throw new Error('unregister-repo requires --repo <owner/repo>');
+      return {
+        command,
+        repo: String(raw['repo']),
+        blogServerUrl,
+      };
+    }
+    case 'list-repos': {
+      return {
+        command,
+        json: Boolean(raw['json']),
+        blogServerUrl,
+      };
+    }
+    case 'export': {
+      if (!raw['repo'])
+        throw new Error('export requires --repo <owner/repo>');
+      return {
+        command,
+        repo: String(raw['repo']),
+        outputFile: raw['output-file'] ? String(raw['output-file']) : undefined,
+        blogServerUrl,
+      };
+    }
     default:
       throw new Error(
         `Unknown command: "${command}"\n` +
           'Usage: blog-cli <command> [options]\n' +
-          'Commands: branch-entry, daily-summary, chat, config, register-repo, list, get, search, stats',
+          'Commands: branch-entry, daily-summary, chat, config, register-repo, list, get, search, stats, delete, unregister-repo, list-repos, export',
       );
   }
 }
@@ -775,6 +815,81 @@ export async function runStatsCommand(args: ParsedArgs): Promise<void> {
   }
 }
 
+// ─── J.1 delete command ────────────────────────────────────────────────────
+
+/**
+ * blog-cli delete --repo owner/repo --post-id <id>
+ */
+export async function runDeleteCommand(args: ParsedArgs): Promise<void> {
+  if (!args.postId) throw new Error('delete requires --post-id <id>');
+  const result = await callMcpTool(args.blogServerUrl, 'delete_post', {
+    repoKey: args.repo,
+    postId: args.postId,
+  });
+  const { ok, postId, threadPruned } = result as { ok: boolean; postId: string; threadPruned: boolean };
+  if (!ok) throw new Error(`Delete failed: ${JSON.stringify(result)}`);
+  console.log(`Deleted post ${postId} (thread pruned: ${threadPruned})`);
+}
+
+// ─── J.2 unregister-repo command ──────────────────────────────────────────
+
+/**
+ * blog-cli unregister-repo --repo owner/repo
+ */
+export async function runUnregisterRepoCommand(args: ParsedArgs): Promise<void> {
+  const result = await callMcpTool(args.blogServerUrl, 'unregister_repo', {
+    repoKey: args.repo,
+  });
+  const { success } = result as { success: boolean };
+  if (!success) throw new Error(`Unregister failed: ${JSON.stringify(result)}`);
+  console.log(`Unregistered repo: ${args.repo}`);
+}
+
+// ─── J.3 list-repos command ────────────────────────────────────────────────
+
+/**
+ * blog-cli list-repos [--json]
+ */
+export async function runListReposCommand(args: ParsedArgs): Promise<void> {
+  const result = await callMcpTool(args.blogServerUrl, 'list_repos', {});
+  if (args.json) {
+    console.log(JSON.stringify(result, null, 2));
+    return;
+  }
+  const { repos } = result as { repos: Array<{ repoKey: string; enabled: boolean; modes?: { autoScan?: boolean } }> };
+  if (!repos?.length) {
+    console.log('No registered repos.');
+    return;
+  }
+  console.log('REPO'.padEnd(38), 'ENABLED', 'AUTO-SCAN');
+  console.log('-'.repeat(60));
+  for (const repo of repos) {
+    const key = (repo.repoKey ?? '').padEnd(38);
+    const enabled = String(repo.enabled ?? false).padEnd(8);
+    const autoScan = String(repo.modes?.autoScan ?? false);
+    console.log(`${key}  ${enabled}  ${autoScan}`);
+  }
+}
+
+// ─── J.4 export command ─────────────────────────────────────────────────────
+
+/**
+ * blog-cli export --repo owner/repo [--output-file posts.json]
+ */
+export async function runExportCommand(args: ParsedArgs): Promise<void> {
+  const result = await callMcpTool(args.blogServerUrl, 'export_repo', {
+    repoKey: args.repo,
+  });
+  const json = JSON.stringify(result, null, 2);
+  if (args.outputFile) {
+    const { writeFileSync } = await import('node:fs');
+    writeFileSync(args.outputFile, json, 'utf8');
+    console.log(`Exported ${args.outputFile}`);
+  } else {
+    console.log(json);
+  }
+}
+
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
 export async function main(argv = process.argv.slice(2)): Promise<void> {
@@ -814,6 +929,18 @@ export async function main(argv = process.argv.slice(2)): Promise<void> {
         break;
       case 'stats':
         await runStatsCommand(parsed);
+        break;
+      case 'delete':
+        await runDeleteCommand(parsed);
+        break;
+      case 'unregister-repo':
+        await runUnregisterRepoCommand(parsed);
+        break;
+      case 'list-repos':
+        await runListReposCommand(parsed);
+        break;
+      case 'export':
+        await runExportCommand(parsed);
         break;
     }
   } catch (err) {

@@ -31,7 +31,7 @@ import { loadNovelConfig, type NovelConfig } from './config.js';
 const args = process.argv.slice(2);
 const command = args[0];
 
-function parseKvArgs(kvs: string[]): Record<string, string> {
+export function parseKvArgs(kvs: string[]): Record<string, string> {
   const result: Record<string, string> = {};
   for (let i = 0; i < kvs.length; i++) {
     const kv = kvs[i]!;
@@ -224,7 +224,16 @@ Environment variables for Firestore storage:
   process.exit(1);
 }
 
-main().catch((err) => {
-  console.error('Fatal:', err);
-  process.exit(1);
-});
+// Only run main when invoked directly (not when imported by tests)
+const isMain =
+  process.argv[1] &&
+  (process.argv[1].endsWith('/novel/cli.ts') ||
+    process.argv[1].endsWith('/novel/cli.js') ||
+    process.argv[1].includes('dev:novel'));
+
+if (isMain) {
+  main().catch((err) => {
+    console.error('Fatal:', err);
+    process.exit(1);
+  });
+}

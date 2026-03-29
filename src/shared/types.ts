@@ -97,6 +97,8 @@ export interface Post {
   metadata?: PostMetadata;
   /** Monotonic insertion sequence number for stable sort when timestamps collide */
   seq?: number;
+  /** GitHub webhook delivery ID for idempotent deduplication */
+  deliveryId?: string;
 }
 
 export const PostSchema = z.object({
@@ -113,6 +115,7 @@ export const PostSchema = z.object({
   updatedAt: z.string(),
   slug: z.string(),
   metadata: PostMetadataSchema.optional(),
+  deliveryId: z.string().optional(),
 });
 
 // ─── Thread ───────────────────────────────────────────────────────────────────

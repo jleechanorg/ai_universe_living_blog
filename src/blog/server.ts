@@ -119,6 +119,8 @@ export async function createBlogApp(options?: {
     writeMax?: number;    // default 20/min
     chatMax?: number;     // default 10/min
   };
+  /** Override AUTH_API_KEY for testing without env vars. */
+  authApiKey?: string;
 }): Promise<ReturnType<typeof express>> {
   const storage = options?.storage ?? createStorage({
     type: STORAGE_TYPE as 'memory' | 'file' | 'firestore',
@@ -167,6 +169,22 @@ export async function createBlogApp(options?: {
     message: { jsonrpc: '2.0', id: null, error: { code: -32000, message: 'Chat rate limit exceeded' } },
   });
   if (globalLimiter) app.use('/mcp', globalLimiter);
+
+  // ── Optional API key auth (Section I.2) ───────────────────────────────────
+  // Activates when AUTH_API_KEY env var OR authApiKey option is set.
+  // GET routes (/health, /, /mcp, /metrics) remain open; only POST /mcp is gated.
+  const configuredAuthKey = options?.authApiKey ?? process.env['AUTH_API_KEY'];
+  if (configuredAuthKey) {
+    app.use('/mcp', (req: Request, res: Response, next): void => {
+      if (req.method !== 'POST') return next();
+      const key = req.headers['x-api-key'];
+      if (key !== configuredAuthKey) {
+        res.status(401).json({ error: 'Unauthorized', code: 401 });
+        return;
+      }
+      next();
+    });
+  }
 
   // ── Capture raw body bytes before JSON parsing (for webhook HMAC) ────────
   // Use express.json verify callback to capture the exact raw bytes GitHub signed,

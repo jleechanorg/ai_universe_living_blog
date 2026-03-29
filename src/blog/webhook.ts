@@ -58,7 +58,15 @@ async function handleWebhookEvent(
   event: { type: string; id: string; payload: Record<string, unknown> },
   repoKey: string,
   storage: BlogStorage,
-): Promise<{ created: boolean; postType?: PostEventType }> {
+): Promise<{ created: boolean; postType?: PostEventType; duplicate?: boolean; existingPostId?: string }> {
+  // ── Idempotency: check for duplicate delivery ───────────────────────────────
+  const deliveryTag = `webhook:delivery:${event.id}`;
+  const existing = await storage.listPosts({ repoKey: repoKey as import('../shared/types.js').RepoKey, limit: 100 });
+  const duplicatePost = existing.posts.find((p) => p.tags?.includes(deliveryTag));
+  if (duplicatePost) {
+    logger.info('webhook: duplicate delivery, returning idempotent response', { repoKey, eventId: event.id });
+    return { created: false, duplicate: true, existingPostId: duplicatePost.id };
+  }
   const ghEvent = {
     id: event.id,
     type: event.type,
@@ -104,11 +112,12 @@ async function handleWebhookEvent(
     title: `${postType}: ${prNumber ? `PR #${prNumber}` : event.type}`,
     content: JSON.stringify(event.payload, null, 2),
     eventType: postType,
-    tags: [event.type, 'webhook'],
+    tags: [event.type, 'webhook', deliveryTag],
     status: 'published',
     createdAt: ghEvent.createdAt,
     updatedAt: ghEvent.createdAt,
     slug: event.id,
+    deliveryId: event.id,
     metadata: {
       commitSha: typeof payload.after === 'string' ? payload.after : undefined,
       branchName,
@@ -200,6 +209,8 @@ export function createWebhookHandler(
 
     if (result.created) {
       res.json({ ok: true, deliveryId, postType: result.postType });
+    } else if (result.duplicate) {
+      res.json({ ok: true, deliveryId, duplicate: true, postId: result.existingPostId });
     } else {
       // Acknowledge unsupported events without error
       res.json({ ok: true, deliveryId, note: `Event type '${eventType}' not supported` });

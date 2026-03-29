@@ -219,4 +219,120 @@ describe('POST /webhook', () => {
     const webhookPosts = result.posts.filter((p) => p.tags?.includes('webhook'));
     expect(webhookPosts.length).toBeGreaterThan(0);
   });
+
+  // I.1 test 1: Second delivery with same X-GitHub-Delivery ID → 200 but no new post created
+  it('duplicate X-GitHub-Delivery ID → 200, duplicate:true, no new post', async () => {
+    const deliveryId = 'delivery-i1-001-' + Date.now();
+    const body = JSON.stringify(prPayload('opened'));
+    // First delivery
+    await request(app)
+      .post('/webhook')
+      .set('X-GitHub-Event', 'pull_request')
+      .set('X-GitHub-Delivery', deliveryId)
+      .set('X-Hub-Signature-256', sign(body, WEBHOOK_SECRET))
+      .set('Content-Type', 'application/json')
+      .send(body)
+      .expect(200);
+
+    const before = await storage.listPosts({ repoKey: TEST_REPO as `${string}/${string}`, limit: 100 });
+    const beforeCount = before.posts.length;
+
+    // Second delivery with same ID
+    const res = await request(app)
+      .post('/webhook')
+      .set('X-GitHub-Event', 'pull_request')
+      .set('X-GitHub-Delivery', deliveryId)
+      .set('X-Hub-Signature-256', sign(body, WEBHOOK_SECRET))
+      .set('Content-Type', 'application/json')
+      .send(body);
+
+    expect(res.status).toBe(200);
+    expect(res.body.duplicate).toBe(true);
+    expect(res.body.ok).toBe(true);
+    const after = await storage.listPosts({ repoKey: TEST_REPO as `${string}/${string}`, limit: 100 });
+    expect(after.posts.length).toBe(beforeCount);
+  });
+
+  // I.1 test 2: Duplicate response includes postId
+  it('duplicate delivery returns postId of existing post', async () => {
+    const deliveryId = 'delivery-i1-002-' + Date.now();
+    const body = JSON.stringify(prPayload('opened'));
+    // First delivery
+    await request(app)
+      .post('/webhook')
+      .set('X-GitHub-Event', 'pull_request')
+      .set('X-GitHub-Delivery', deliveryId)
+      .set('X-Hub-Signature-256', sign(body, WEBHOOK_SECRET))
+      .set('Content-Type', 'application/json')
+      .send(body);
+
+    // Second delivery with same ID
+    const res = await request(app)
+      .post('/webhook')
+      .set('X-GitHub-Event', 'pull_request')
+      .set('X-GitHub-Delivery', deliveryId)
+      .set('X-Hub-Signature-256', sign(body, WEBHOOK_SECRET))
+      .set('Content-Type', 'application/json')
+      .send(body);
+
+    expect(res.status).toBe(200);
+    expect(res.body.duplicate).toBe(true);
+    expect(typeof res.body.postId).toBe('string');
+  });
+
+  // I.1 test 3: Different delivery IDs → two separate posts created
+  it('different delivery IDs → two separate posts created', async () => {
+    const did1 = 'delivery-i1-003a-' + Date.now();
+    const did2 = 'delivery-i1-003b-' + Date.now();
+    const tag1 = `webhook:delivery:${did1}`;
+    const tag2 = `webhook:delivery:${did2}`;
+    const body1 = JSON.stringify(prPayload('opened'));
+    const body2 = JSON.stringify(prPayload('closed', false));
+    // Two different delivery IDs
+    const res1 = await request(app)
+      .post('/webhook')
+      .set('X-GitHub-Event', 'pull_request')
+      .set('X-GitHub-Delivery', did1)
+      .set('X-Hub-Signature-256', sign(body1, WEBHOOK_SECRET))
+      .set('Content-Type', 'application/json')
+      .send(body1);
+
+    const res2 = await request(app)
+      .post('/webhook')
+      .set('X-GitHub-Event', 'pull_request')
+      .set('X-GitHub-Delivery', did2)
+      .set('X-Hub-Signature-256', sign(body2, WEBHOOK_SECRET))
+      .set('Content-Type', 'application/json')
+      .send(body2);
+
+    expect(res1.status).toBe(200);
+    expect(res2.status).toBe(200);
+    expect(res1.body.duplicate).toBeUndefined();
+    expect(res2.body.duplicate).toBeUndefined();
+    const posts = await storage.listPosts({ repoKey: TEST_REPO as `${string}/${string}`, limit: 100 });
+    // Verify both specific delivery tags exist
+    const hasTag1 = posts.posts.some((p) => p.tags?.includes(tag1));
+    const hasTag2 = posts.posts.some((p) => p.tags?.includes(tag2));
+    expect(hasTag1).toBe(true);
+    expect(hasTag2).toBe(true);
+  });
+
+  // I.1 test 4: Delivery ID stored as tag on created post
+  it('delivery ID stored as webhook:delivery:<id> tag on created post', async () => {
+    const deliveryId = 'delivery-i1-004-' + Date.now();
+    const deliveryTag = `webhook:delivery:${deliveryId}`;
+    const body = JSON.stringify(prPayload('opened'));
+    await request(app)
+      .post('/webhook')
+      .set('X-GitHub-Event', 'pull_request')
+      .set('X-GitHub-Delivery', deliveryId)
+      .set('X-Hub-Signature-256', sign(body, WEBHOOK_SECRET))
+      .set('Content-Type', 'application/json')
+      .send(body);
+
+    const posts = await storage.listPosts({ repoKey: TEST_REPO as `${string}/${string}`, limit: 100 });
+    const tagged = posts.posts.filter((p) => p.tags?.includes(deliveryTag));
+    expect(tagged.length).toBe(1);
+    expect(tagged[0]!.deliveryId).toBe(deliveryId);
+  });
 });

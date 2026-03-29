@@ -216,6 +216,71 @@ describe('Blog MCP Server — write tools rate limit', () => {
 
 // ─── G.4 /metrics endpoint ─────────────────────────────────────────────────────
 
+// ─── I.2 Optional X-API-Key auth ───────────────────────────────────────────────
+
+const TEST_API_KEY = 'test-auth-key-abc123';
+
+describe('Blog MCP Server — X-API-Key auth (authApiKey option)', () => {
+  let app: import('express').Application;
+
+  beforeAll(async () => {
+    process.env['STORAGE_TYPE'] = 'memory';
+    const { createBlogApp } = await import('../../src/blog/server.js');
+    app = await createBlogApp({ authApiKey: TEST_API_KEY, disableRateLimiting: true });
+  });
+
+  afterAll(() => {
+    delete process.env['STORAGE_TYPE'];
+  });
+
+  // I.2 test 1: correct key → 200 OK
+  it('POST /mcp with correct X-API-Key → 200', async () => {
+    const res = await request(app)
+      .post('/mcp')
+      .set('X-API-Key', TEST_API_KEY)
+      .send(mcpPayload('health_check'))
+      .expect(200);
+    expect(res.body.result).toBeDefined();
+  });
+
+  // I.2 test 2: wrong key → 401
+  it('POST /mcp with wrong X-API-Key → 401', async () => {
+    const res = await request(app)
+      .post('/mcp')
+      .set('X-API-Key', 'wrong-key')
+      .send(mcpPayload('health_check'));
+    expect(res.status).toBe(401);
+    expect(res.body.error).toBe('Unauthorized');
+  });
+
+  // I.2 test 3: no key → 401
+  it('POST /mcp without X-API-Key → 401', async () => {
+    const res = await request(app)
+      .post('/mcp')
+      .send(mcpPayload('health_check'));
+    expect(res.status).toBe(401);
+    expect(res.body.error).toBe('Unauthorized');
+  });
+
+  // I.2 test 4: GET /health unauthenticated even when AUTH_API_KEY set → 200
+  it('GET /health unauthenticated even when authApiKey configured → 200', async () => {
+    const res = await request(app).get('/health').expect(200);
+    expect(res.body.status).toBe('ok');
+  });
+
+  // I.2 test 5: no authApiKey → POST /mcp without key → 200 (open server)
+  it('POST /mcp without auth configured → 200 (open server)', async () => {
+    process.env['STORAGE_TYPE'] = 'memory';
+    const { createBlogApp: createBlogApp2 } = await import('../../src/blog/server.js');
+    const openApp = await createBlogApp2({ disableRateLimiting: true });
+    const res = await request(openApp)
+      .post('/mcp')
+      .send(mcpPayload('health_check'))
+      .expect(200);
+    expect(res.body.result).toBeDefined();
+  });
+});
+
 describe('GET /metrics endpoint', () => {
   let app: Application;
 

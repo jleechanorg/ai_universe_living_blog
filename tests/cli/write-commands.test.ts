@@ -82,7 +82,7 @@ describe('blog-cli export', () => {
     expect(args.outputFile).toBe('posts.json');
   });
 
-  // Test 8: export without --output-file prints to stdout
+  // Test 8: export without --repo throws
   it('parseArgs: export without --repo throws', () => {
     expect(() => parseArgsRaw(['export'])).toThrow('--repo');
   });

@@ -882,7 +882,6 @@ export async function runExportCommand(args: ParsedArgs): Promise<void> {
   });
   const json = JSON.stringify(result, null, 2);
   if (args.outputFile) {
-    const { writeFileSync } = await import('node:fs');
     writeFileSync(args.outputFile, json, 'utf8');
     console.log(`Exported ${args.outputFile}`);
   } else {

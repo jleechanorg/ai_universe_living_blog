@@ -117,10 +117,20 @@ export function requireApiKey(dataDir: string, requiredScope?: string) {
       return;
     }
 
-    // Persist lastUsedAt asynchronously so it doesn't block the response
-    matched.lastUsedAt = new Date().toISOString();
-    const updated = validKeys.map((k) => (k.key === matched.key ? matched : k));
-    setImmediate(() => { try { saveApiKeys(updated, dataDir); } catch { /* best-effort */ } });
+    // Persist lastUsedAt asynchronously so it doesn't block the response.
+    // Re-read current keys inside setImmediate to avoid writing a stale snapshot.
+    const matchedKey = matched.key;
+    const lastUsedAt = new Date().toISOString();
+    matched.lastUsedAt = lastUsedAt;
+    setImmediate(() => {
+      try {
+        const currentKeys = loadApiKeys(dataDir);
+        const updated = currentKeys.map((k) =>
+          k.key === matchedKey ? { ...k, lastUsedAt } : k,
+        );
+        saveApiKeys(updated, dataDir);
+      } catch { /* best-effort */ }
+    });
     res.locals.apiKey = matched;
     next();
   };

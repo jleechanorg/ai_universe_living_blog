@@ -378,8 +378,6 @@ export function createBlogToolHandlers(ctx: BlogToolContext) {
     async update_repo(rawParams: unknown) {
       try {
         if (!ctx.registry) return toMcpError('registry not available');
-        const existing = ctx.registry.get(params.repoKey);
-        if (!existing) return toMcpError(`Repo not found: ${params.repoKey}`);
         const params = await UpdateRepoParamsSchema.parseAsync(rawParams);
         const existing = ctx.registry.get(params.repoKey);
         if (!existing) return toMcpError(`Repo not found: ${params.repoKey}`);

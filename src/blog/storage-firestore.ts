@@ -50,7 +50,15 @@ export class FirestoreBlogStorage implements BlogStorage {
     const firestoreOpts: { projectId?: string; ignoreUndefinedProperties?: boolean } = {
       ignoreUndefinedProperties: true,
     };
-    if (opts.projectId) firestoreOpts.projectId = opts.projectId;
+    // When FIRESTORE_EMULATOR_HOST is set (local dev or CI), the SDK still requires
+    // an explicit projectId — auto-detect from env so tests and CLI work without it.
+    if (opts.projectId) {
+      firestoreOpts.projectId = opts.projectId;
+    } else if (process.env['FIRESTORE_PROJECT_ID']) {
+      firestoreOpts.projectId = process.env['FIRESTORE_PROJECT_ID'];
+    } else if (process.env['FIRESTORE_EMULATOR_HOST']) {
+      firestoreOpts.projectId = 'test-project';
+    }
     this.db = new Firestore(firestoreOpts);
 
     const collection = opts.collection ?? 'posts';
@@ -58,7 +66,11 @@ export class FirestoreBlogStorage implements BlogStorage {
     this.postersCol = this.db.collection(`${collection}_posters`);
     this.threadsCol = this.db.collection(`${collection}_threads`);
 
-    logger.info('FirestoreBlogStorage initialized', { collection, projectId: opts.projectId ?? '(default)' });
+    logger.info('FirestoreBlogStorage initialized', {
+      collection,
+      projectId: firestoreOpts.projectId ?? '(default)',
+      emulatorHost: process.env['FIRESTORE_EMULATOR_HOST'] ?? '(none)',
+    });
   }
 
   // ─── Poster ────────────────────────────────────────────────────────────────

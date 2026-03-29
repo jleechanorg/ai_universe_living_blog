@@ -17,6 +17,7 @@ jobs:
       contents: write
       pull-requests: write
       issues: write
+      checks: read
     outputs:
       prs_evaluated: ${{ steps.list_prs.outputs.pr_numbers }}
       merged_count: ${{ steps.evaluate_and_merge.outputs.merged_count }}

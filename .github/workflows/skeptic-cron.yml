@@ -103,29 +103,13 @@ jobs:
             SHA_MARKER="<!-- skeptic-gate-trigger-${HEAD_SHA} -->"
             if [ -z "$FAIL_REASONS" ]; then
               VERDICT="PASS"
-              VERDICT_BODY="## Skeptic Gate
-
-**VERDICT: PASS** ✅
-
-All lightweight checks passed for commit \`${HEAD_SHA:0:7}\`:
-- CI: green
-- Mergeable: yes
-- Reviews: no CHANGES_REQUESTED
-
-${SHA_MARKER}"
+              VERDICT_BODY=$(printf "## Skeptic Gate\n\n**VERDICT: PASS** :white_check_mark:\n\nAll lightweight checks passed for commit \`%s\`:\n- CI: green\n- Mergeable: yes\n- Reviews: no CHANGES_REQUESTED\n\n%s" "${HEAD_SHA:0:7}" "$SHA_MARKER")
               echo "  => VERDICT: PASS"
               # Write for merge step
               echo "VERDICT: PASS" > "skeptic-output-${PR_NUM}.txt"
             else
               VERDICT="FAIL"
-              VERDICT_BODY="## Skeptic Gate
-
-**VERDICT: FAIL** ❌
-
-Commit \`${HEAD_SHA:0:7}\` did not pass all checks:
-- ${FAIL_REASONS}
-
-${SHA_MARKER}"
+              VERDICT_BODY=$(printf "## Skeptic Gate\n\n**VERDICT: FAIL** :x:\n\nCommit \`%s\` did not pass all checks:\n- %s\n\n%s" "${HEAD_SHA:0:7}" "$FAIL_REASONS" "$SHA_MARKER")
               echo "  => VERDICT: FAIL (${FAIL_REASONS})"
               # Write for merge step
               echo "VERDICT: FAIL" > "skeptic-output-${PR_NUM}.txt"

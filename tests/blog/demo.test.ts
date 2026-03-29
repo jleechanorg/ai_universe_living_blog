@@ -212,6 +212,22 @@ describe('runDemoMode', () => {
   it('throws on invalid repo format', async () => {
     const storage = new MemoryBlogStorage();
     await expect(runDemoMode(storage, { repo: 'invalid' })).rejects.toThrow('Invalid repo format');
+    await expect(runDemoMode(storage, { repo: 'owner/repo/extra' })).rejects.toThrow('Invalid repo format');
+  });
+
+  it('creates thread records so listThreads returns demo entries', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => [
+        { sha: 'aaa0000', commit: { author: { name: 'Alice', date: new Date().toISOString() }, message: 'feat: test' } },
+      ],
+    }));
+
+    const storage = new MemoryBlogStorage();
+    await runDemoMode(storage, { repo: 'owner/repo' });
+
+    const threads = await storage.listThreads({ repoKey: 'owner/repo', limit: 10 });
+    expect(threads.threads).toHaveLength(1);
   });
 
   it('propagates GitHub API errors', async () => {

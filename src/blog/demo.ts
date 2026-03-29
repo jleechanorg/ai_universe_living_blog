@@ -86,7 +86,7 @@ export async function fetchCommits(
 
 /**
  * Group commits into sessions by temporal gap.
- * Commits within SESSION_GAP_HOURS of each other (same author) are in the same session.
+ * Commits within SESSION_GAP_HOURS of each other are in the same session.
  */
 export const SESSION_GAP_HOURS = 4;
 
@@ -176,12 +176,15 @@ export async function runDemoMode(
   storage: BlogStorage,
   opts: DemoModeOptions,
 ): Promise<number> {
-  const [owner, repoName] = opts.repo.split('/');
-  if (!owner || !repoName) {
-    throw new Error(`Invalid repo format: "${opts.repo}". Expected "owner/repo".`);
+  const parts = opts.repo.split('/');
+  if (parts.length !== 2 || !parts[0] || !parts[1]) {
+    throw new Error(`Invalid repo format: "${opts.repo}". Expected "owner/repo" (exactly two non-empty parts).`);
   }
+  const [owner, repoName] = parts as [string, string];
 
-  const maxCommits = opts.maxCommits ?? 100;
+  const maxCommits = (Number.isInteger(opts.maxCommits) && (opts.maxCommits ?? 0) > 0)
+    ? opts.maxCommits!
+    : 100;
   const sessionPrefix = opts.sessionPrefix ?? 'demo-';
 
   logger.info('Demo mode: fetching commits', { repo: opts.repo, maxCommits });
@@ -206,6 +209,17 @@ export async function runDemoMode(
     const now = new Date().toISOString();
     const title = `Demo Branch Entry — ${session.sessionId}`;
     const threadId = uuidv4();
+    // Create thread first so listThreads/getThread return demo entries
+    await storage.createThread({
+      id: threadId,
+      repoKey,
+      posterId: session.sessionId,
+      title,
+      postCount: 1,
+      latestPostAt: now,
+      status: 'open',
+      createdAt: now,
+    });
     await storage.createPost({
       id: uuidv4(),
       repoKey,

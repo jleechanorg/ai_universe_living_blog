@@ -9,7 +9,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { parseArgs, parseKvArgs, getEffectiveConfig, runConfigCommand } from '../../src/cli/main.js';
+import { parseArgs, parseKvArgs, getEffectiveConfig, runConfigCommand, runBranchEntryCommand } from '../../src/cli/main.js';
 import { mkdtempSync, rmSync, existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -275,5 +275,135 @@ describe('runConfigCommand', () => {
     const combined = logs.join('');
     const parsed = JSON.parse(combined);
     expect(parsed).toHaveProperty('blogServerUrl');
+  });
+});
+
+// ─── runBranchEntryCommand: output modes ─────────────────────────────────────
+// These tests use vi.stubGlobal('fetch') to intercept ALL fetch calls — both
+// the GitHub API calls inside GitHubClient and the MCP POST in output=both mode.
+// GitHub API responses are matched by URL path prefix.
+
+const MOCK_PR = {
+  number: 42, title: 'Test PR', body: 'body', state: 'open',
+  merged: false, html_url: 'https://github.com/o/r/pull/42',
+  head: { ref: 'feat/x', sha: 'abc123' },
+  user: { login: 'alice' },
+};
+
+function makeFetchMock(opts: { mcpFail?: boolean } = {}) {
+  return vi.fn(async (url: string) => {
+    const u = String(url);
+    if (u.includes('api.github.com')) {
+      // GitHub API — return minimal shapes
+      if (u.includes('/pulls/') && !u.includes('/commits') && !u.includes('/reviews') && !u.includes('/check-runs')) {
+        return { ok: true, headers: new Headers(), json: async () => MOCK_PR };
+      }
+      // commits, reviews, check-runs — return empty list
+      return { ok: true, headers: new Headers(), json: async () => [] };
+    }
+    // MCP POST
+    if (opts.mcpFail) throw new Error('ECONNREFUSED');
+    return {
+      ok: true,
+      json: async () => ({ result: { content: [{ text: '{"id":"new-post-id"}' }] } }),
+    };
+  });
+}
+
+describe('runBranchEntryCommand: output modes', () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = mkdtempSync(join(tmpdir(), 'cli-branch-entry-test-'));
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+    rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it('output=none skips writing prompt file', async () => {
+    vi.stubGlobal('fetch', makeFetchMock());
+    const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+    await runBranchEntryCommand({
+      command: 'branch-entry',
+      session: 'ao-test',
+      pr: '42',
+      repo: 'owner/repo',
+      output: 'none',
+      outputDir: tmpDir,
+      blogServerUrl: 'http://localhost:8081',
+    });
+    consoleSpy.mockRestore();
+    expect(existsSync(join(tmpDir, 'ao-test.md'))).toBe(false);
+  });
+
+  it('output=file writes prompt file, does not POST to MCP', async () => {
+    const fetchMock = makeFetchMock();
+    vi.stubGlobal('fetch', fetchMock);
+    const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+
+    await runBranchEntryCommand({
+      command: 'branch-entry',
+      session: 'ao-test',
+      pr: '42',
+      repo: 'owner/repo',
+      output: 'file',
+      outputDir: tmpDir,
+      blogServerUrl: 'http://localhost:8081',
+    });
+    consoleSpy.mockRestore();
+
+    expect(existsSync(join(tmpDir, 'ao-test.md'))).toBe(true);
+    // No localhost call (only GitHub API calls)
+    const mcpCalls = fetchMock.mock.calls.filter(([u]) => String(u).includes('localhost'));
+    expect(mcpCalls).toHaveLength(0);
+  });
+
+  it('output=both writes file AND posts to MCP server', async () => {
+    const fetchMock = makeFetchMock();
+    vi.stubGlobal('fetch', fetchMock);
+    const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+
+    await runBranchEntryCommand({
+      command: 'branch-entry',
+      session: 'ao-test',
+      pr: '42',
+      repo: 'owner/repo',
+      output: 'both',
+      outputDir: tmpDir,
+      blogServerUrl: 'http://localhost:8081',
+    });
+    consoleSpy.mockRestore();
+
+    expect(existsSync(join(tmpDir, 'ao-test.md'))).toBe(true);
+    // MCP POST called
+    const mcpCalls = fetchMock.mock.calls.filter(([u]) => String(u).includes('localhost'));
+    expect(mcpCalls).toHaveLength(1);
+    const callBody = JSON.parse(mcpCalls[0][1].body as string);
+    expect(callBody.params.arguments.eventType).toBe('novel_branch_entry');
+    expect(callBody.params.arguments.repoKey).toBe('owner/repo');
+  });
+
+  it('output=both continues gracefully when MCP server is unreachable', async () => {
+    vi.stubGlobal('fetch', makeFetchMock({ mcpFail: true }));
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+
+    await expect(runBranchEntryCommand({
+      command: 'branch-entry',
+      session: 'ao-test',
+      pr: '42',
+      repo: 'owner/repo',
+      output: 'both',
+      outputDir: tmpDir,
+      blogServerUrl: 'http://localhost:8081',
+    })).resolves.toBeUndefined(); // does not throw
+
+    expect(existsSync(join(tmpDir, 'ao-test.md'))).toBe(true);
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('ECONNREFUSED'));
+    consoleSpy.mockRestore();
+    warnSpy.mockRestore();
   });
 });

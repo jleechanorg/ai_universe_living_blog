@@ -347,7 +347,10 @@ async function main() {
     collection: STORAGE_COLLECTION,
   });
 
-  const app = await createBlogApp({ storage: sharedStorage });
+  const app = await createBlogApp({
+    storage: sharedStorage,
+    disableRateLimiting: process.env['DISABLE_RATE_LIMITING'] === '1',
+  });
   const server = http.createServer(app);
 
   server.on('error', (err: Error & { code?: string }) => {

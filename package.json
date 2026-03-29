@@ -50,8 +50,8 @@
     "install:novel": "bash scripts/install-novel.sh",
     "install:all": "bash install.sh",
     "test:install": "vitest run tests/install.test.ts",
-    "test:mcp": "vitest run testing_mcp/server.test.ts",
-    "test:mcp:watch": "vitest testing_mcp/server.test.ts"
+    "test:mcp": "DISABLE_RATE_LIMITING=1 vitest run --config vitest.config.mcp.ts",
+    "test:mcp:watch": "vitest --config vitest.config.mcp.ts"
   },
   "dependencies": {
     "@ai-universe/mcp-server-utils": "^1.0.2",

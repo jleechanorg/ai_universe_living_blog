@@ -70,6 +70,8 @@ export interface BlogToolContext {
   agentId: string;
   registry?: RepoRegistry;
   dataDir?: string;
+  /** In-memory Prometheus counter map — set by server.ts */
+  metricsCounters?: Map<string, number>;
 }
 
 // ─── New tool schemas ─────────────────────────────────────────────────────────
@@ -114,6 +116,25 @@ export const ChatWorkerParamsSchema = z.object({
   workerId: z.string().min(1),
   message: z.string().min(1),
   repoKey: RepoKeySchema,
+});
+
+export const DeletePostParamsSchema = z.object({
+  repoKey: RepoKeySchema,
+  postId: z.string().uuid(),
+});
+
+export const GetRepoStatsParamsSchema = z.object({
+  repoKey: RepoKeySchema,
+  days: z.number().int().positive().default(7),
+});
+
+export const SearchPostsParamsSchema = z.object({
+  repoKey: RepoKeySchema,
+  q: z.string().min(1).optional(),
+  tags: z.array(z.string()).optional(),
+  eventType: PostEventTypeSchema.optional(),
+  limit: z.number().int().min(1).max(100).default(20).optional(),
+  cursor: z.string().optional(),
 });
 
 /**
@@ -226,6 +247,10 @@ export function createBlogToolHandlers(ctx: BlogToolContext) {
         }
 
         logger.info('create_post OK', { postId: created.id, eventType: params.eventType, repoKey: params.repoKey });
+        if (ctx.metricsCounters) {
+          const key = `blog_posts_created_total{repo="${params.repoKey}"}`;
+          ctx.metricsCounters.set(key, (ctx.metricsCounters.get(key) ?? 0) + 1);
+        }
         return toMcpResult({ success: true, post: created });
       } catch (err) {
         const msg = err instanceof z.ZodError
@@ -331,6 +356,168 @@ export function createBlogToolHandlers(ctx: BlogToolContext) {
 
     async health_check() {
       return toMcpResult({ status: 'healthy', service: 'blog-mcp-server', version: '0.1.0' });
+    },
+
+    // ─── G.1 search_posts ─────────────────────────────────────────────────────
+
+    async search_posts(rawParams: unknown) {
+      try {
+        const params = await SearchPostsParamsSchema.parseAsync(rawParams);
+        // Require at least one filter
+        if (!params.q && !params.eventType) {
+          return toMcpError('At least one of q or eventType is required');
+        }
+
+        const q = params.q?.toLowerCase();
+        const limit = params.limit ?? 20;
+
+        // Scan all posts for this repo (demo-scale acceptable)
+        const all: import('../shared/types.js').Post[] = [];
+        let cursor: string | undefined;
+        do {
+          const page = await ctx.storage.listPosts({
+            repoKey: params.repoKey as RepoKey,
+            limit: 1000,
+            cursor,
+          });
+          all.push(...page.posts);
+          cursor = page.cursor;
+        } while (cursor);
+
+        // Filter
+        const matched = all.filter((post) => {
+          if (params.eventType && post.eventType !== params.eventType) return false;
+          if (params.tags?.length && !params.tags.every((t) => post.tags?.includes(t))) return false;
+          if (q && !(post.title + ' ' + post.content).toLowerCase().includes(q)) return false;
+          return true;
+        });
+
+        // Cursor-based pagination on filtered results
+        const start = params.cursor
+          ? matched.findIndex((p) => p.id === params.cursor) + 1
+          : 0;
+        const slice = matched.slice(start, start + limit);
+        const nextCursor = matched.length > start + limit ? slice[slice.length - 1]?.id : undefined;
+
+        return toMcpResult({ posts: slice, cursor: nextCursor, total: matched.length });
+      } catch (err) {
+        return toMcpError(err instanceof z.ZodError
+          ? err.errors.map((e) => `${e.path.join('.')}: ${e.message}`).join('; ')
+          : String(err));
+      }
+    },
+
+    // ─── G.2 delete_post ─────────────────────────────────────────────────────
+
+    async delete_post(rawParams: unknown) {
+      try {
+        const { repoKey, postId } = await DeletePostParamsSchema.parseAsync(rawParams);
+
+        const post = await ctx.storage.getPost(postId);
+        if (!post) return toMcpError(`Post not found: ${postId}`);
+        if (post.repoKey !== repoKey) return toMcpError(`Post not found in repo: ${repoKey}`);
+
+        const threadId = post.threadId;
+        await ctx.storage.deletePost(postId);
+
+        // Prune thread if it has no remaining posts
+        let threadPruned = false;
+        const postsLeft = await ctx.storage.getPostsByThread(threadId);
+        if (postsLeft.length === 0) {
+          await ctx.storage.deleteThread(threadId);
+          threadPruned = true;
+        }
+
+        logger.info('delete_post OK', { postId, threadPruned });
+        if (ctx.metricsCounters) {
+          const key = `blog_posts_deleted_total{repo="${repoKey}"}`;
+          ctx.metricsCounters.set(key, (ctx.metricsCounters.get(key) ?? 0) + 1);
+        }
+        return toMcpResult({ ok: true, postId, threadPruned });
+      } catch (err) {
+        return toMcpError(err instanceof z.ZodError
+          ? err.errors.map((e) => `${e.path.join('.')}: ${e.message}`).join('; ')
+          : String(err));
+      }
+    },
+
+    // ─── G.3 get_repo_stats ──────────────────────────────────────────────────
+
+    async get_repo_stats(rawParams: unknown) {
+      try {
+        const params = await GetRepoStatsParamsSchema.parseAsync(rawParams);
+        const days = params.days;
+
+        const cutoff = new Date();
+        cutoff.setDate(cutoff.getDate() - days);
+        const cutoffStr = cutoff.toISOString();
+
+        // Single pass over all posts for this repo
+        const all: import('../shared/types.js').Post[] = [];
+        let cursor: string | undefined;
+        do {
+          const page = await ctx.storage.listPosts({
+            repoKey: params.repoKey as RepoKey,
+            limit: 1000,
+            cursor,
+          });
+          all.push(...page.posts);
+          cursor = page.cursor;
+        } while (cursor);
+
+        const recent = all.filter((p) => p.createdAt >= cutoffStr);
+        const recentSet = new Set(recent.map((p) => p.threadId));
+
+        // Tag counts
+        const tagCounts = new Map<string, number>();
+        for (const p of all) {
+          for (const t of p.tags ?? []) {
+            tagCounts.set(t, (tagCounts.get(t) ?? 0) + 1);
+          }
+        }
+        const topTags = [...tagCounts.entries()]
+          .sort((a, b) => b[1] - a[1])
+          .slice(0, 10)
+          .map(([tag, count]) => ({ tag, count }));
+
+        // EventType counts
+        const eventTypeCounts = new Map<string, number>();
+        for (const p of all) {
+          eventTypeCounts.set(p.eventType, (eventTypeCounts.get(p.eventType) ?? 0) + 1);
+        }
+        const topEventTypes = [...eventTypeCounts.entries()]
+          .sort((a, b) => b[1] - a[1])
+          .slice(0, 10)
+          .map(([eventType, count]) => ({ eventType, count }));
+
+        // Daily breakdown
+        const dailyMap = new Map<string, number>();
+        for (const p of recent) {
+          const date = p.createdAt.slice(0, 10); // YYYY-MM-DD
+          dailyMap.set(date, (dailyMap.get(date) ?? 0) + 1);
+        }
+        const dailyBreakdown: { date: string; count: number }[] = [];
+        for (let i = days - 1; i >= 0; i--) {
+          const d = new Date();
+          d.setDate(d.getDate() - i);
+          const dateStr = d.toISOString().slice(0, 10);
+          dailyBreakdown.push({ date: dateStr, count: dailyMap.get(dateStr) ?? 0 });
+        }
+
+        return toMcpResult({
+          repoKey: params.repoKey,
+          totalPosts: all.length,
+          totalThreads: recentSet.size,
+          [`postsLast${days}Days`]: recent.length,
+          topTags,
+          topEventTypes,
+          dailyBreakdown,
+        });
+      } catch (err) {
+        return toMcpError(err instanceof z.ZodError
+          ? err.errors.map((e) => `${e.path.join('.')}: ${e.message}`).join('; ')
+          : String(err));
+      }
     },
 
     // ─── Repo management ──────────────────────────────────────────────────────

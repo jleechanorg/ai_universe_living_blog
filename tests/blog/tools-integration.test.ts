@@ -597,3 +597,413 @@ describe('chat_worker', () => {
     }
   });
 });
+
+// ─── G.2 delete_post ─────────────────────────────────────────────────────────
+
+describe('delete_post tool', () => {
+  let tools: ReturnType<typeof createBlogToolHandlers>;
+  let ctx: BlogToolContext;
+
+  beforeEach(() => {
+    const setup = makeCtx();
+    tools = setup.tools;
+    ctx = setup.ctx;
+  });
+
+  // G.2 test 1
+  it('deletes post — no longer returned by get_post', async () => {
+    const create = await tools.create_post({
+      repoKey: 'jleechanorg/ai_universe_living_blog',
+      posterId: 'ao-worker-1',
+      title: 'To be deleted',
+      content: 'Goodbye.',
+      eventType: 'pr_created',
+    });
+    const postId = parseResult(create).post.id;
+
+    const del = await tools.delete_post({
+      repoKey: 'jleechanorg/ai_universe_living_blog',
+      postId,
+    });
+    expect(del.isError).toBe(false);
+    const delParsed = parseResult(del);
+    expect(delParsed.ok).toBe(true);
+    expect(delParsed.postId).toBe(postId);
+
+    const get = await tools.get_post({ repoKey: 'jleechanorg/ai_universe_living_blog', postId });
+    expect(get.isError).toBe(true);
+  });
+
+  // G.2 test 2
+  it('prunes empty thread after last post deleted', async () => {
+    const threadId = uuidv4();
+    const create = await tools.create_post({
+      repoKey: 'jleechanorg/ai_universe_living_blog',
+      posterId: 'ao-worker-1',
+      title: 'Only post in thread',
+      content: 'Body.',
+      eventType: 'pr_created',
+      threadId,
+    });
+    const postId = parseResult(create).post.id;
+
+    const del = await tools.delete_post({
+      repoKey: 'jleechanorg/ai_universe_living_blog',
+      postId,
+    });
+    expect(parseResult(del).threadPruned).toBe(true);
+
+    const thread = await ctx.storage.getThread(threadId);
+    expect(thread).toBeNull();
+  });
+
+  // G.2 test 3
+  it('does NOT prune thread when other posts remain', async () => {
+    const threadId = uuidv4();
+    await tools.create_post({
+      repoKey: 'jleechanorg/ai_universe_living_blog',
+      posterId: 'ao-worker-1',
+      title: 'Post 1',
+      content: 'Body 1.',
+      eventType: 'pr_created',
+      threadId,
+    });
+    const postId2 = parseResult(await tools.create_post({
+      repoKey: 'jleechanorg/ai_universe_living_blog',
+      posterId: 'ao-worker-1',
+      title: 'Post 2',
+      content: 'Body 2.',
+      eventType: 'pr_edited',
+      threadId,
+    })).post.id;
+
+    const del = await tools.delete_post({
+      repoKey: 'jleechanorg/ai_universe_living_blog',
+      postId: postId2,
+    });
+    expect(parseResult(del).threadPruned).toBe(false);
+
+    const thread = await ctx.storage.getThread(threadId);
+    expect(thread).not.toBeNull();
+    expect(thread!.postCount).toBe(1);
+  });
+
+  // G.2 test 4
+  it('404 on unknown postId', async () => {
+    const fakeId = uuidv4();
+    const result = await tools.delete_post({
+      repoKey: 'jleechanorg/ai_universe_living_blog',
+      postId: fakeId,
+    });
+    expect(result.isError).toBe(true);
+    const parsed = parseResult(result);
+    expect(parsed.error).toContain('not found');
+  });
+
+  // G.2 test 5
+  it('403-equivalent error when repoKey does not match post repoKey', async () => {
+    const create = await tools.create_post({
+      repoKey: 'jleechanorg/ai_universe_living_blog',
+      posterId: 'ao-worker-1',
+      title: 'Blog post',
+      content: 'Body.',
+      eventType: 'pr_created',
+    });
+    const postId = parseResult(create).post.id;
+
+    // Try to delete with wrong repo
+    const result = await tools.delete_post({
+      repoKey: 'other/repo',
+      postId,
+    });
+    expect(result.isError).toBe(true);
+    const parsed = parseResult(result);
+    expect(parsed.error).toContain('not found');
+  });
+});
+
+// ─── G.3 get_repo_stats ─────────────────────────────────────────────────────
+
+describe('get_repo_stats tool', () => {
+  let tools: ReturnType<typeof createBlogToolHandlers>;
+
+  beforeEach(() => {
+    const setup = makeCtx();
+    tools = setup.tools;
+  });
+
+  // G.3 test 1
+  it('returns zeros for empty repo', async () => {
+    const result = await tools.get_repo_stats({ repoKey: 'jleechanorg/ai_universe_living_blog' });
+    expect(result.isError).toBe(false);
+    const parsed = parseResult(result);
+    expect(parsed.totalPosts).toBe(0);
+    expect(parsed.totalThreads).toBe(0);
+    expect(parsed.postsLast7Days).toBe(0);
+    expect(parsed.topTags).toEqual([]);
+  });
+
+  // G.3 test 2
+  it('counts posts and threads correctly', async () => {
+    await tools.create_post({
+      repoKey: 'jleechanorg/ai_universe_living_blog',
+      posterId: 'ao-worker-1',
+      title: 'PR opened',
+      content: 'A PR.',
+      eventType: 'pr_created',
+    });
+    await tools.create_post({
+      repoKey: 'jleechanorg/ai_universe_living_blog',
+      posterId: 'ao-worker-1',
+      title: 'PR edited',
+      content: 'Edited.',
+      eventType: 'pr_edited',
+    });
+
+    const result = await tools.get_repo_stats({ repoKey: 'jleechanorg/ai_universe_living_blog' });
+    expect(result.isError).toBe(false);
+    const parsed = parseResult(result);
+    expect(parsed.totalPosts).toBe(2);
+    // Each post gets its own thread (no explicit threadId)
+    expect(parsed.totalThreads).toBe(2);
+  });
+
+  // G.3 test 3
+  it('top tags ordered by frequency', async () => {
+    await tools.create_post({
+      repoKey: 'jleechanorg/ai_universe_living_blog',
+      posterId: 'ao-worker-1',
+      title: 'Post A',
+      content: 'Body.',
+      eventType: 'pr_created',
+      tags: ['bug', 'urgent'],
+    });
+    await tools.create_post({
+      repoKey: 'jleechanorg/ai_universe_living_blog',
+      posterId: 'ao-worker-1',
+      title: 'Post B',
+      content: 'Body.',
+      eventType: 'pr_edited',
+      tags: ['bug'],
+    });
+    await tools.create_post({
+      repoKey: 'jleechanorg/ai_universe_living_blog',
+      posterId: 'ao-worker-1',
+      title: 'Post C',
+      content: 'Body.',
+      eventType: 'pr_merged',
+      tags: ['bug', 'critical'],
+    });
+
+    const result = await tools.get_repo_stats({ repoKey: 'jleechanorg/ai_universe_living_blog' });
+    const parsed = parseResult(result);
+    expect(parsed.topTags[0].tag).toBe('bug');
+    expect(parsed.topTags[0].count).toBe(3);
+  });
+
+  // G.3 test 4
+  it('days parameter scopes rolling window', async () => {
+    const result = await tools.get_repo_stats({ repoKey: 'jleechanorg/ai_universe_living_blog', days: 1 });
+    const parsed = parseResult(result);
+    expect(parsed.postsLast1Days).toBe(0);
+  });
+
+  // G.3 test 5
+  it('daily breakdown has one entry per day in range', async () => {
+    const result = await tools.get_repo_stats({ repoKey: 'jleechanorg/ai_universe_living_blog', days: 7 });
+    const parsed = parseResult(result);
+    expect(Array.isArray(parsed.dailyBreakdown)).toBe(true);
+    expect(parsed.dailyBreakdown.length).toBe(7);
+  });
+});
+
+// ─── G.1 search_posts ───────────────────────────────────────────────────────
+
+describe('search_posts tool', () => {
+  let tools: ReturnType<typeof createBlogToolHandlers>;
+
+  beforeEach(() => {
+    const setup = makeCtx();
+    tools = setup.tools;
+  });
+
+  // G.1 test 1
+  it('returns posts whose title matches query', async () => {
+    await tools.create_post({
+      repoKey: 'jleechanorg/ai_universe_living_blog',
+      posterId: 'ao-worker-1',
+      title: 'Fix login bug',
+      content: 'Body.',
+      eventType: 'pr_created',
+    });
+    await tools.create_post({
+      repoKey: 'jleechanorg/ai_universe_living_blog',
+      posterId: 'ao-worker-1',
+      title: 'Add dark mode',
+      content: 'Body.',
+      eventType: 'pr_created',
+    });
+
+    const result = await tools.search_posts({ repoKey: 'jleechanorg/ai_universe_living_blog', q: 'login' });
+    expect(result.isError).toBe(false);
+    const parsed = parseResult(result);
+    expect(parsed.posts).toHaveLength(1);
+    expect(parsed.posts[0].title).toBe('Fix login bug');
+  });
+
+  // G.1 test 2
+  it('returns posts whose content matches query', async () => {
+    await tools.create_post({
+      repoKey: 'jleechanorg/ai_universe_living_blog',
+      posterId: 'ao-worker-1',
+      title: 'PR opened',
+      content: 'The authentication token was refreshed.',
+      eventType: 'pr_created',
+    });
+    await tools.create_post({
+      repoKey: 'jleechanorg/ai_universe_living_blog',
+      posterId: 'ao-worker-1',
+      title: 'PR edited',
+      content: 'No auth changes here.',
+      eventType: 'pr_edited',
+    });
+
+    const result = await tools.search_posts({ repoKey: 'jleechanorg/ai_universe_living_blog', q: 'authentication' });
+    const parsed = parseResult(result);
+    expect(parsed.posts).toHaveLength(1);
+    expect(parsed.posts[0].title).toBe('PR opened');
+  });
+
+  // G.1 test 3
+  it('returns empty array when no match', async () => {
+    await tools.create_post({
+      repoKey: 'jleechanorg/ai_universe_living_blog',
+      posterId: 'ao-worker-1',
+      title: 'Fix bug',
+      content: 'Body.',
+      eventType: 'pr_created',
+    });
+
+    const result = await tools.search_posts({ repoKey: 'jleechanorg/ai_universe_living_blog', q: 'nonexistent' });
+    const parsed = parseResult(result);
+    expect(parsed.posts).toHaveLength(0);
+  });
+
+  // G.1 test 4
+  it('tag filter ANDs with text query', async () => {
+    await tools.create_post({
+      repoKey: 'jleechanorg/ai_universe_living_blog',
+      posterId: 'ao-worker-1',
+      title: 'Bug fix',
+      content: 'Body.',
+      eventType: 'pr_created',
+      tags: ['bug'],
+    });
+    await tools.create_post({
+      repoKey: 'jleechanorg/ai_universe_living_blog',
+      posterId: 'ao-worker-1',
+      title: 'Feature add',
+      content: 'Body.',
+      eventType: 'pr_created',
+      tags: ['feature'],
+    });
+
+    const result = await tools.search_posts({
+      repoKey: 'jleechanorg/ai_universe_living_blog',
+      q: 'fix',
+      tags: ['bug'],
+    });
+    const parsed = parseResult(result);
+    expect(parsed.posts).toHaveLength(1);
+    expect(parsed.posts[0].title).toBe('Bug fix');
+  });
+
+  // G.1 test 5
+  it('eventType filter works alone (no q required when filtering by eventType)', async () => {
+    await tools.create_post({
+      repoKey: 'jleechanorg/ai_universe_living_blog',
+      posterId: 'ao-worker-1',
+      title: 'PR opened',
+      content: 'Body.',
+      eventType: 'pr_created',
+    });
+    await tools.create_post({
+      repoKey: 'jleechanorg/ai_universe_living_blog',
+      posterId: 'ao-worker-1',
+      title: 'PR merged',
+      content: 'Body.',
+      eventType: 'pr_merged',
+    });
+
+    const result = await tools.search_posts({
+      repoKey: 'jleechanorg/ai_universe_living_blog',
+      eventType: 'pr_merged',
+    });
+    const parsed = parseResult(result);
+    expect(parsed.posts).toHaveLength(1);
+    expect(parsed.posts[0].eventType).toBe('pr_merged');
+  });
+
+  // G.1 test 6
+  it('cursor-based pagination works', async () => {
+    const repoKey = 'jleechanorg/ai_universe_living_blog';
+    for (let i = 0; i < 5; i++) {
+      await tools.create_post({
+        repoKey,
+        posterId: 'ao-worker-1',
+        title: `Post ${i} with search term`,
+        content: 'Body.',
+        eventType: 'pr_created',
+      });
+    }
+
+    const page1 = await tools.search_posts({ repoKey, q: 'search term', limit: 2 });
+    const { posts: p1, cursor } = parseResult(page1);
+    expect(p1).toHaveLength(2);
+    expect(cursor).toBeDefined();
+
+    const page2 = await tools.search_posts({ repoKey, q: 'search term', limit: 2, cursor });
+    const { posts: p2 } = parseResult(page2);
+    expect(p2).toHaveLength(2);
+    const p1Ids = p1.map((p: { id: string }) => p.id);
+    const overlap = p2.filter((p: { id: string }) => p1Ids.includes(p.id));
+    expect(overlap).toHaveLength(0);
+  });
+
+  // G.1 test 7
+  it('case-insensitive match', async () => {
+    await tools.create_post({
+      repoKey: 'jleechanorg/ai_universe_living_blog',
+      posterId: 'ao-worker-1',
+      title: 'FIX Authentication Bug',
+      content: 'Body.',
+      eventType: 'pr_created',
+    });
+
+    const result = await tools.search_posts({ repoKey: 'jleechanorg/ai_universe_living_blog', q: 'fix authentication' });
+    const parsed = parseResult(result);
+    expect(parsed.posts).toHaveLength(1);
+  });
+
+  // G.1 test 8
+  it('scoped to repoKey — does not return posts from other repos', async () => {
+    await tools.create_post({
+      repoKey: 'jleechanorg/ai_universe_living_blog',
+      posterId: 'ao-worker-1',
+      title: 'Blog repo post',
+      content: 'Body.',
+      eventType: 'pr_created',
+    });
+    await tools.create_post({
+      repoKey: 'other/repo',
+      posterId: 'ao-worker-1',
+      title: 'Other repo post about login',
+      content: 'Body.',
+      eventType: 'pr_created',
+    });
+
+    const result = await tools.search_posts({ repoKey: 'jleechanorg/ai_universe_living_blog', q: 'login' });
+    const parsed = parseResult(result);
+    expect(parsed.posts).toHaveLength(0);
+  });
+});

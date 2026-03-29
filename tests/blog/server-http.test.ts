@@ -213,3 +213,53 @@ describe('Blog MCP Server — write tools rate limit', () => {
     expect(res.headers['ratelimit-limit']).toBe(String(WRITE_MAX));
   });
 });
+
+// ─── G.4 /metrics endpoint ─────────────────────────────────────────────────────
+
+describe('GET /metrics endpoint', () => {
+  let app: Application;
+
+  beforeAll(async () => {
+    process.env['STORAGE_TYPE'] = 'memory';
+    const { createBlogApp } = await import('../../src/blog/server.js');
+    app = await createBlogApp();
+  });
+
+  // G.4 test 1
+  it('GET /metrics returns 200', async () => {
+    const res = await request(app).get('/metrics').expect(200);
+    expect(typeof res.text).toBe('string');
+  });
+
+  // G.4 test 2
+  it('response contains blog_posts_created_total after creating a post', async () => {
+    // First clear any prior state by creating a fresh app (each test has its own counters)
+    // Create a post via MCP
+    await request(app)
+      .post('/mcp')
+      .send(mcpPayload('create_post', {
+        repoKey: 'jleechanorg/ai_universe_living_blog',
+        posterId: 'metrics-test-worker',
+        title: 'Metrics test post',
+        content: 'Testing metrics.',
+        eventType: 'pr_created',
+      }))
+      .expect(200);
+
+    const res = await request(app).get('/metrics');
+    expect(res.status).toBe(200);
+    // Counter is incremented for each request (global) and for posts_created
+    const text = res.text;
+    expect(text).toContain('blog_posts_created_total');
+  });
+
+  // G.4 test 3
+  it('response is valid Prometheus text format', async () => {
+    const res = await request(app).get('/metrics').expect(200);
+    const text = res.text;
+    // Prometheus text format: lines starting with # HELP or # TYPE, then metric lines
+    const lines = text.split('\n');
+    const hasHelpOrType = lines.some((l) => l.startsWith('# HELP') || l.startsWith('# TYPE'));
+    expect(hasHelpOrType).toBe(true);
+  });
+});

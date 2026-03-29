@@ -285,4 +285,23 @@ export class FirestoreBlogStorage implements BlogStorage {
     const nextCursor = threads.length === limit ? threads[threads.length - 1]!.id : undefined;
     return { threads, cursor: nextCursor };
   }
+
+  // ─── Delete ────────────────────────────────────────────────────────────────
+
+  async deletePost(id: string): Promise<void> {
+    await this.postsCol.doc(id).delete();
+    logger.debug('Firestore: Post deleted', { id });
+  }
+
+  async deleteThread(id: string): Promise<void> {
+    // Delete all posts belonging to this thread first
+    const postsSnap = await this.postsCol.where('threadId', '==', id).get();
+    const batch = this.db.batch();
+    for (const doc of postsSnap.docs) {
+      batch.delete(doc.ref);
+    }
+    batch.delete(this.threadsCol.doc(id));
+    await batch.commit();
+    logger.debug('Firestore: Thread deleted', { id });
+  }
 }

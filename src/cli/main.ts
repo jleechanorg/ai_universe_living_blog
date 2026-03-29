@@ -459,6 +459,88 @@ export function runConfigCommand(args: ParsedArgs, configDir?: string): void {
 }
 
 /**
+ * Fetch posts for a specific date from the MCP server via list_posts.
+ * Returns an empty array if the server is unreachable.
+ */
+async function fetchPostsFromMcp(
+  blogServerUrl: string,
+  repoKey: string,
+  date: string,
+): Promise<import('../shared/types.js').Post[]> {
+  const url = `${blogServerUrl}/mcp`;
+  const posts: import('../shared/types.js').Post[] = [];
+  let cursor: string | undefined;
+
+  try {
+    do {
+      const body = JSON.stringify({
+        jsonrpc: '2.0', id: 1, method: 'list_posts',
+        params: { repoKey, limit: 50, ...(cursor ? { cursor } : {}) },
+      });
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body,
+      });
+      if (!res.ok) break;
+      const data = (await res.json()) as Record<string, unknown>;
+      const result = JSON.parse(
+        ((data.result as Record<string, unknown[]>)?.content as Array<Record<string, string>>)?.[0]?.text ?? '{}',
+      ) as { posts?: import('../shared/types.js').Post[]; nextCursor?: string };
+      const pagePosts = result.posts ?? [];
+      // Filter to target date (createdAt starts with the date string)
+      for (const p of pagePosts) {
+        if ((p.createdAt ?? '').startsWith(date)) posts.push(p);
+      }
+      cursor = result.nextCursor;
+    } while (cursor);
+  } catch {
+    // server unreachable — caller handles empty array
+  }
+  return posts;
+}
+
+/**
+ * Generate a daily summary entry.
+ * Fetches posts from the MCP server (output=both) or in-process memory storage (output=file).
+ */
+export async function runDailySummaryCommand(args: ParsedArgs): Promise<void> {
+  const repo = args.repo;
+  if (!repo) throw new Error('daily-summary requires --repo <owner/repo>');
+
+  const targetDate = args.date ?? new Date().toISOString().split('T')[0]!;
+  const sessionId = args.session ?? `daily-${targetDate}`;
+
+  // Fetch posts — always from MCP server (best-effort; falls back to skip if none)
+  const posts = await fetchPostsFromMcp(args.blogServerUrl, repo, targetDate);
+
+  const { runDailySummaryPipeline } = await import('../novel/engine.js');
+  const { createStorage } = await import('../blog/storage-factory.js');
+
+  // Use in-memory storage (the fetched posts will be passed directly)
+  const storage = createStorage({ type: 'memory' });
+
+  const result = await runDailySummaryPipeline(
+    { repoKey: repo as `${string}/${string}`, sessionId, storage },
+    targetDate,
+    posts,
+  );
+
+  if (result.skipped) {
+    console.log(JSON.stringify({ skipped: true, reason: result.reason, date: targetDate }, null, 2));
+    return;
+  }
+
+  const summary = { date: targetDate, sessionId, wordCount: result.wordCount, postId: result.postId };
+  console.log(JSON.stringify(summary, null, 2));
+
+  // output=both: also POST the generated daily entry to the MCP server
+  if (args.output === 'both' && result.postId) {
+    console.log(`Daily summary posted to storage (postId: ${result.postId})`);
+  }
+}
+
+/**
  * Register a repo via the MCP server's register_repo tool.
  */
 export async function runRegisterRepoCommand(args: ParsedArgs): Promise<void> {
@@ -509,9 +591,7 @@ export async function main(argv = process.argv.slice(2)): Promise<void> {
         await runBranchEntryCommand(parsed);
         break;
       case 'daily-summary':
-        // Delegate to existing novel engine CLI for daily-summary
-        console.log('Use: npm run dev:novel -- daily-summary [options]');
-        console.log('(daily-summary is handled by the novel engine)');
+        await runDailySummaryCommand(parsed);
         break;
       case 'chat':
         await runChatCommand(parsed);

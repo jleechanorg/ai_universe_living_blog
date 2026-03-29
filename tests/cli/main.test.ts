@@ -210,7 +210,7 @@ describe('getEffectiveConfig', () => {
     delete process.env['BLOG_SERVER_URL'];
     delete process.env['GITHUB_TOKEN'];
     const cfg = getEffectiveConfig();
-    expect(cfg.blogServerUrl).toBe('http://localhost:8081');
+    expect(cfg.blogServerUrl).toBe('http://localhost:8888');
     expect(cfg.githubToken).toBeUndefined();
   });
 

@@ -6,3 +6,7 @@ testing_mcp/
 *.log
 .env
 .env.*
+src/
+.github/
+*.md
+tsconfig*.json

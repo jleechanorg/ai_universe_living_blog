@@ -9,6 +9,10 @@ on:
       - ".github/workflows/deploy-cloudrun.yml"
   workflow_dispatch:
 
+concurrency:
+  group: deploy-cloudrun
+  cancel-in-progress: true
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
@@ -23,6 +27,9 @@ jobs:
         with:
           workload_identity_provider: ${{ vars.WIF_PROVIDER }}
           service_account: ${{ vars.DEPLOY_SA }}
+
+      - name: Configure Docker for GCR
+        run: gcloud auth configure-docker --quiet
 
       - uses: actions/setup-node@v4
         with:

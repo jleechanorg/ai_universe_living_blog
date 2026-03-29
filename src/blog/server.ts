@@ -13,6 +13,7 @@
 
 import express from 'express';
 import type { Request, Response } from 'express';
+import path from 'path';
 import cors from 'cors';
 import rateLimit from 'express-rate-limit';
 import http from 'http';
@@ -201,14 +202,12 @@ export async function createBlogApp(options?: {
     res.json({ status: 'ok', service: 'blog-mcp-server', version: '0.1.0' });
   });
 
-  // Root
+  // Serve public/ static files (Phase 2 Web Reader UI)
+  app.use(express.static(path.join(process.cwd(), 'public')));
+
+  // Root — serve index.html
   app.get('/', (_req, res) => {
-    res.json({
-      service: 'Blog MCP Server',
-      version: '0.1.0',
-      description: 'Living blog — per-repo PR lifecycle feed',
-      tools: Object.keys(tools),
-    });
+    res.sendFile(path.join(process.cwd(), 'public', 'index.html'));
   });
 
   // MCP metadata

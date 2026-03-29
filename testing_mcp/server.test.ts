@@ -76,20 +76,14 @@ describe('GET /health', () => {
 // ─── / root ──────────────────────────────────────────────────────────────────
 
 describe('GET /', () => {
-  it('lists all 18 tools', async () => {
+  it('returns text/html with status 200 (Phase 2 Web Reader UI)', async () => {
     if (!serverAvailable) return;
     const res = await fetch(`${BASE_URL}/`);
-    const body = await res.json() as { tools: string[] };
-    expect(Array.isArray(body.tools)).toBe(true);
-    const required = [
-      'create_post', 'get_post', 'list_posts', 'update_post', 'delete_post',
-      'get_thread', 'list_threads', 'search_posts', 'get_repo_stats',
-      'register_repo', 'unregister_repo', 'list_repos', 'update_repo',
-      'generate_api_key', 'chat_worker', 'export_repo', 'replay_event', 'health_check',
-    ];
-    for (const tool of required) {
-      expect(body.tools, `missing tool: ${tool}`).toContain(tool);
-    }
+    expect(res.status).toBe(200);
+    expect(res.headers.get('content-type')).toMatch(/text\/html/);
+    const text = await res.text();
+    expect(text).toContain('AI Universe Living Blog');
+    expect(text).toContain('repo-select');
   });
 });
 

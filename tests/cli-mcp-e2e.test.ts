@@ -158,13 +158,11 @@ describe('CLI-MCP E2E: novel engine → MCP server', () => {
       storage: emptyStor,
     };
 
-    // Use a date far in the future — guaranteed no posts
+    // With 0 posts, pipeline returns { skipped: true } (minPostsForDailySummary default = 3)
     const result = await runDailySummaryPipeline(config, '2099-01-01', []);
-    // With no posts, the pipeline should either return null/undefined or a skipped result
-    // The pipeline checks minPostsForDailySummary (default 3); 0 posts < 3 → should skip
-    // The actual skip happens in cli.ts before calling the pipeline, so here it returns a post
-    // but with minimal content. Just verify it doesn't throw.
     expect(result).toBeDefined();
+    expect(result.skipped).toBe(true);
+    expect(result.reason).toContain('posts');
   });
 
   it('daily-summary pipeline: generates entry from multiple branch posts', async () => {

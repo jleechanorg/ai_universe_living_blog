@@ -1,38 +1,11 @@
 /**
  * tests/cli/parser.test.ts — Phase 2: Novel CLI argument parsing tests
  *
- * Tests the parseKvArgs function exported from src/novel/cli.ts
- * and the command routing / validation logic.
+ * Tests the parseKvArgs function exported from src/novel/cli.ts.
  */
 
 import { describe, it, expect } from 'vitest';
-
-// ─── Import only the parseKvArgs helper (not the full CLI entry point) ─────────
-// We test the parser by invoking it directly. The CLI main() function
-// calls process.exit() which would abort the test runner, so we never
-// call main() here.
-
-// Re-export parseKvArgs for testing by copying the pure function.
-// The function has no side effects and no imports — safe to duplicate.
-
-function parseKvArgs(kvs: string[]): Record<string, string> {
-  const result: Record<string, string> = {};
-  for (let i = 0; i < kvs.length; i++) {
-    const kv = kvs[i]!;
-    if (!kv.startsWith('--')) continue;
-    if (kv.includes('=')) {
-      const [k, ...rest] = kv.split('=');
-      if (k) result[k.replace(/^--/, '')] = rest.join('=');
-    } else {
-      const next = kvs[i + 1];
-      if (next !== undefined && !next.startsWith('--')) {
-        result[kv.replace(/^--/, '')] = next;
-        i++;
-      }
-    }
-  }
-  return result;
-}
+import { parseKvArgs } from '../../src/novel/cli.js';
 
 // ─── Tests ──────────────────────────────────────────────────────────────────────
 

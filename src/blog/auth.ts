@@ -11,6 +11,7 @@ import { createHash, timingSafeEqual } from 'crypto';
 import { readFileSync, writeFileSync, mkdirSync } from 'fs';
 import { join } from 'path';
 import type { Request, Response, NextFunction } from 'express';
+import { logger } from '../shared/logger.js';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -125,11 +126,13 @@ export function requireApiKey(dataDir: string, requiredScope?: string) {
     setImmediate(() => {
       try {
         const currentKeys = loadApiKeys(dataDir);
-        const updated = currentKeys.map((k) =>
-          k.key === matchedKey ? { ...k, lastUsedAt } : k,
-        );
-        saveApiKeys(updated, dataDir);
-      } catch { /* best-effort */ }
+        const idx = currentKeys.findIndex((k) => k.key === matchedKey);
+        if (idx === -1) return; // avoid persisting a stale/empty snapshot
+        currentKeys[idx] = { ...currentKeys[idx]!, lastUsedAt };
+        saveApiKeys(currentKeys, dataDir);
+      } catch (error) {
+        logger.warn('Failed to persist API key lastUsedAt', { error, matchedKey, dataDir });
+      }
     });
     res.locals.apiKey = matched;
     next();

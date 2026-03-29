@@ -10,7 +10,7 @@ import type {
 } from '../shared/types.js';
 import { PosterSchema, PostSchema, encodeRepoKey } from '../shared/types.js';
 import { logger } from '../shared/logger.js';
-import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'node:fs';
+import { readFileSync, writeFileSync, existsSync, mkdirSync, renameSync, unlinkSync } from 'node:fs';
 
 /**
  * In-memory blog storage with optional file persistence.
@@ -58,8 +58,16 @@ export class MemoryBlogStorage implements BlogStorage {
     const lines = Array.from(this.posts.values())
       .map((p) => JSON.stringify(p))
       .join('\n');
-    writeFileSync(this.postsPath(), lines, 'utf8');
-    logger.debug('Posts persisted', { count: this.posts.size });
+    // Atomic write: write to tmp file then rename to avoid corruption on crash
+    const tmpPath = `${this.postsPath()}.tmp-${process.pid}-${Date.now()}`;
+    try {
+      writeFileSync(tmpPath, lines, 'utf8');
+      renameSync(tmpPath, this.postsPath());
+      logger.debug('Posts persisted', { count: this.posts.size });
+    } catch (err) {
+      try { unlinkSync(tmpPath); } catch { /* best-effort cleanup */ }
+      throw err;
+    }
   }
 
   private loadPosts(): void {

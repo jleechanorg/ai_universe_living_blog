@@ -10,12 +10,14 @@ source_of_truth: GitHub PR list
 
 ## Open PRs
 
-- **Section K (jc-1290):** blog-cli list-threads/get-thread/update-post → target 431 tests
+None — all design doc sections (A–L) are implemented and merged. Roadmap complete.
 
 ## Completed Milestones
 
 | PR | Title |
 |----|-------|
+| #42 | feat(cli): Section L — update-repo, generate-api-key, replay-event |
+| #41 | feat(cli): Section K — list-threads, get-thread, update-post |
 | #40 | feat(cli): Section J — blog-cli delete/unregister-repo/list-repos/export |
 | #39 | feat(blog): Section I — webhook idempotency + optional X-API-Key auth |
 | #38 | feat(blog): Section H — CLI read commands + export_repo + replay_event |
@@ -32,35 +34,44 @@ source_of_truth: GitHub PR list
 | #27 | feat(cli): blog-cli entry point (Section A) |
 | #19 | feat: Remote Mode + Auto-Scan Architecture |
 
-## Current State
+## Current State (ROADMAP COMPLETE)
 
-- **Tests:** 421 total (413 passing, 8 skipped) — 6 skip require Firestore emulator, 1 requires ANTHROPIC_API_KEY, 1 storage-factory Firestore
-- **TDD roadmap coverage:** 100% (Phases 1–5 from `docs/plans/2026-03-27-tdd-roadmap.md`)
-- **Design doc coverage:** 100% (Sections A–K planned)
+- **Tests:** 432 passing | 8 skipped (440 total) — 6 skip Firestore emulator, 1 ANTHROPIC_API_KEY, 1 storage-factory
+- **TDD roadmap coverage:** 100% (all phases + Sections A–L)
+- **CLI coverage:** 100% — all 19 MCP tools have CLI surface
 - **Auto-merge:** Skeptic cron runs every 30 min, merges on CI + MERGEABLE + no CHANGES_REQUESTED
-- **Storage backends:** memory (default), file (STORAGE_TYPE=file), firestore (STORAGE_TYPE=firestore)
+- **Storage backends:** memory (default), file, firestore
 - **GitHub Actions:** ci.yml, skeptic-cron.yml, skeptic-gate.yml, novel-entry.yml, daily-summary.yml
-- **Firestore emulator:** running in CI via Java 21 + firebase-tools (G)
-- **CLI read commands:** blog-cli list/get/search/stats (H)
-- **CLI write commands:** blog-cli delete/unregister-repo/list-repos/export (J)
-- **CLI thread commands:** blog-cli list-threads/get-thread/update-post (K — in progress)
-- **Data tools:** export_repo, replay_event (H); search_posts, delete_post, get_repo_stats (G)
-- **Observability:** GET /metrics Prometheus endpoint (G)
-- **Auth:** optional X-API-Key via AUTH_API_KEY env var (I)
-- **Idempotency:** webhook delivery_id deduplication via X-GitHub-Delivery (I)
+- **Firestore emulator:** running in CI via Java 21 + firebase-tools
+- **Observability:** GET /metrics Prometheus endpoint
+- **Auth:** optional X-API-Key via AUTH_API_KEY env var
+- **Idempotency:** webhook delivery_id deduplication
 
-## Known Gaps (resolved)
+## CLI Commands (complete)
 
-- ~~`install.sh --storage=firestore` flag wiring~~ — storage factory wired via STORAGE_TYPE env var
-- ~~Novel engine CLI does not call blog HTTP endpoint~~ — `--output=both` implemented in blog-cli
-- ~~`daily-summary` was stubbed in blog-cli~~ — implemented in PR #33
-- ~~Webhook HMAC validation tests missing~~ — implemented in PR #35
-- ~~AutoScanner full poll-cycle integration tests missing~~ — implemented in PR #36
-- ~~Firestore tests skipped in CI~~ — Firestore emulator added in Section G (PR #37)
-- ~~No CLI read commands~~ — list/get/search/stats added in Section H (PR #38)
+| Command | Tool | Section |
+|---|---|---|
+| branch-entry | novel pipeline | A |
+| daily-summary | novel pipeline | A |
+| chat | chat_worker | A |
+| config | — | A |
+| register-repo | register_repo | A |
+| list | list_posts | H |
+| get | get_post | H |
+| search | search_posts | H |
+| stats | get_repo_stats | H |
+| delete | delete_post | J |
+| unregister-repo | unregister_repo | J |
+| list-repos | list_repos | J |
+| export | export_repo | J |
+| list-threads | list_threads | K |
+| get-thread | get_thread | K |
+| update-post | update_post | K |
+| update-repo | update_repo | L |
+| generate-api-key | generate_api_key | L |
+| replay-event | replay_event | L |
 
 ## Next Steps
 
-1. Merge Section K (jc-1290) — blog-cli list-threads/get-thread/update-post → 431 tests
-2. Consider enabling `ANTHROPIC_API_KEY` as a repo secret to activate novel editor pass in GHA (un-skips 1 test)
-3. Post-K: roadmap largely complete — all 19 MCP tools have CLI surface, full auth + idempotency, Firestore in CI
+1. Consider enabling `ANTHROPIC_API_KEY` as a repo secret to un-skip 1 test + enable novel editor pass in GHA
+2. Roadmap is complete — all 19 MCP tools implemented + full CLI surface + auth + idempotency + Firestore in CI

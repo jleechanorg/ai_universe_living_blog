@@ -521,7 +521,7 @@ export async function runDailySummaryCommand(args: ParsedArgs): Promise<void> {
   const storage = createStorage({ type: 'memory' });
 
   const result = await runDailySummaryPipeline(
-    { repoKey: repo as `${string}/${string}`, sessionId, storage },
+    { repoKey: repo as `${string}/${string}`, sessionId, branchName: 'daily', storage },
     targetDate,
     posts,
   );

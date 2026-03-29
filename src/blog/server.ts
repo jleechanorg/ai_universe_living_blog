@@ -43,7 +43,7 @@ const AGENT_ID = process.env['AGENT_ID'] ?? 'blog-mcp-server';
 // Lazily resolves PORT so module import doesn't crash on invalid PORT.
 // Validation runs when the server is actually started, not at import time.
 const getPort = () => {
-  const raw = process.env['PORT'] ?? '8081';
+  const raw = process.env['PORT'] ?? '8888';
   const n = Number(raw);
   if (!Number.isInteger(n) || n < 1 || n > 65535) {
     throw new Error(`Invalid PORT: ${raw} — must be an integer between 1 and 65535`);

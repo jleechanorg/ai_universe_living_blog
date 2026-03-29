@@ -13,7 +13,7 @@
  *
  * Environment variables:
  *   GITHUB_TOKEN           — GitHub personal access token (required for branch-entry)
- *   BLOG_SERVER_URL        — MCP server URL (default: http://localhost:8081)
+ *   BLOG_SERVER_URL        — MCP server URL (default: http://localhost:8888)
  *   ANTHROPIC_API_KEY      — Required for editor pass (optional)
  *   OPENCLAW_INFERENCE_URL — Local inference URL for chat_worker (optional)
  */
@@ -133,7 +133,7 @@ export function parseArgs(argv: string[]): ParsedArgs {
 
   const raw = parseKvArgs(argv.slice(1));
   const blogServerUrl =
-    String(raw['mcp-url'] ?? process.env['BLOG_SERVER_URL'] ?? 'http://localhost:8081');
+    String(raw['mcp-url'] ?? process.env['BLOG_SERVER_URL'] ?? 'http://localhost:8888');
 
   switch (command) {
     case 'branch-entry': {
@@ -377,7 +377,7 @@ export function parseArgs(argv: string[]): ParsedArgs {
 
 export function getEffectiveConfig(): CliConfig {
   return {
-    blogServerUrl: process.env['BLOG_SERVER_URL'] ?? 'http://localhost:8081',
+    blogServerUrl: process.env['BLOG_SERVER_URL'] ?? 'http://localhost:8888',
     githubToken: process.env['GITHUB_TOKEN'],
     anthropicApiKey: process.env['ANTHROPIC_API_KEY'],
     openclawInferenceUrl: process.env['OPENCLAW_INFERENCE_URL'],

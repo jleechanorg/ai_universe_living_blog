@@ -49,7 +49,9 @@
     "install:blog": "bash scripts/install-blog.sh",
     "install:novel": "bash scripts/install-novel.sh",
     "install:all": "bash install.sh",
-    "test:install": "vitest run tests/install.test.ts"
+    "test:install": "vitest run tests/install.test.ts",
+    "test:mcp": "vitest run testing_mcp/server.test.ts",
+    "test:mcp:watch": "vitest testing_mcp/server.test.ts"
   },
   "dependencies": {
     "@ai-universe/mcp-server-utils": "^1.0.2",

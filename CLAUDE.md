@@ -37,8 +37,8 @@ scripts/
 # Start blog MCP server
 npm run dev:blog
 
-# HTTP endpoint: http://localhost:8081/mcp
-# Health: http://localhost:8081/health
+# HTTP endpoint: http://localhost:8888/mcp
+# Health: http://localhost:8888/health
 ```
 
 **Tools** (POST JSON-RPC 2.0 to `/mcp`):
@@ -122,10 +122,10 @@ npm run dev:blog &
 sleep 2
 
 # Health check
-curl -s http://localhost:8081/health | jq .
+curl -s http://localhost:8888/health | jq .
 
 # Exercise each MCP tool via JSON-RPC
-curl -s -X POST http://localhost:8081/mcp \
+curl -s -X POST http://localhost:8888/mcp \
   -H 'Content-Type: application/json' \
   -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"health_check","arguments":{}}}' | jq .
 

@@ -65,6 +65,10 @@ export interface ParsedArgs {
   days?: number;
   // export
   outputFile?: string;
+  // update-repo (L.1)
+  enabled?: boolean;
+  // generate-api-key (L.2)
+  label?: string;
   // env overrides
   blogServerUrl: string;
 }
@@ -117,7 +121,7 @@ export function parseArgs(argv: string[]): ParsedArgs {
   if (!command || command.startsWith('--')) {
     throw new Error(
       'Usage: blog-cli <command> [options]\n' +
-        'Commands: branch-entry, daily-summary, chat, config, register-repo, list, get, search, stats, delete, unregister-repo, list-repos, export',
+        'Commands: branch-entry, daily-summary, chat, config, register-repo, list, get, search, stats, delete, unregister-repo, list-repos, export, update-repo, generate-api-key, replay-event',
     );
   }
 
@@ -281,11 +285,48 @@ export function parseArgs(argv: string[]): ParsedArgs {
         blogServerUrl,
       };
     }
+    // ─── L.1 update-repo ──────────────────────────────────────────────────
+    case 'update-repo': {
+      if (!raw['repo'])
+        throw new Error('update-repo requires --repo <owner/repo>');
+      return {
+        command,
+        repo: String(raw['repo']),
+        enabled: raw['enabled'] === 'true' || raw['enabled'] === true ? true : raw['enabled'] === 'false' || raw['enabled'] === false ? false : undefined,
+        autoScan: raw['auto-scan'] === 'true' || raw['auto-scan'] === true ? true : raw['auto-scan'] === 'false' || raw['auto-scan'] === false ? false : undefined,
+        blogServerUrl,
+      };
+    }
+    // ─── L.2 generate-api-key ────────────────────────────────────────────
+    case 'generate-api-key': {
+      if (!raw['repo'])
+        throw new Error('generate-api-key requires --repo <owner/repo>');
+      return {
+        command,
+        repo: String(raw['repo']),
+        label: raw['label'] ? String(raw['label']) : undefined,
+        blogServerUrl,
+      };
+    }
+    // ─── L.3 replay-event ────────────────────────────────────────────────
+    case 'replay-event': {
+      if (!raw['repo'])
+        throw new Error('replay-event requires --repo <owner/repo>');
+      if (!raw['event-type'])
+        throw new Error('replay-event requires --event-type <event-type>');
+      return {
+        command,
+        repo: String(raw['repo']),
+        eventType: String(raw['event-type']),
+        pr: raw['pr'] ? String(raw['pr']) : undefined,
+        blogServerUrl,
+      };
+    }
     default:
       throw new Error(
         `Unknown command: "${command}"\n` +
           'Usage: blog-cli <command> [options]\n' +
-          'Commands: branch-entry, daily-summary, chat, config, register-repo, list, get, search, stats, delete, unregister-repo, list-repos, export',
+          'Commands: branch-entry, daily-summary, chat, config, register-repo, list, get, search, stats, delete, unregister-repo, list-repos, export, update-repo, generate-api-key, replay-event',
       );
   }
 }
@@ -889,6 +930,58 @@ export async function runExportCommand(args: ParsedArgs): Promise<void> {
   }
 }
 
+// ─── L.1 update-repo command ────────────────────────────────────────────────
+
+/**
+ * blog-cli update-repo --repo owner/repo [--enabled true|false] [--auto-scan true|false]
+ */
+export async function runUpdateRepoCommand(args: ParsedArgs): Promise<void> {
+  const params: Record<string, unknown> = { repoKey: args.repo };
+  if (args.enabled !== undefined) params['enabled'] = args.enabled;
+  if (args.autoScan !== undefined) params['modes'] = { autoScan: args.autoScan };
+
+  const result = await callMcpTool(args.blogServerUrl, 'update_repo', params);
+  const { success, repo } = result as { success: boolean; repo: Record<string, unknown> };
+  if (!success) throw new Error(`update-repo failed: ${JSON.stringify(result)}`);
+  console.log(`Updated repo: ${args.repo}`);
+  console.log(JSON.stringify(repo, null, 2));
+}
+
+// ─── L.2 generate-api-key command ──────────────────────────────────────────
+
+/**
+ * blog-cli generate-api-key --repo owner/repo [--label "key label"]
+ */
+export async function runGenerateApiKeyCommand(args: ParsedArgs): Promise<void> {
+  const params: Record<string, unknown> = {
+    label: args.label ?? `cli-${args.repo}`,
+    scopes: ['read', 'write'],
+  };
+
+  const result = await callMcpTool(args.blogServerUrl, 'generate_api_key', params);
+  const { key, warning } = result as { key: string; warning?: string };
+  if (!key) throw new Error(`generate-api-key failed: ${JSON.stringify(result)}`);
+  console.log(`API key generated for: ${args.repo}`);
+  console.log(`Key: ${key}`);
+  if (warning) console.log(warning);
+}
+
+// ─── L.3 replay-event command ───────────────────────────────────────────────
+
+/**
+ * blog-cli replay-event --repo owner/repo --event-type <type> --pr <n>
+ *
+ * Replays a historical GitHub event into the blog via the replay_event MCP tool.
+ */
+export async function runReplayEventCommand(args: ParsedArgs): Promise<void> {
+  const result = await callMcpTool(args.blogServerUrl, 'replay_event', {
+    repoKey: args.repo,
+    eventType: args.eventType,
+    prNumber: args.pr ? parseInt(args.pr, 10) : undefined,
+  });
+  console.log(JSON.stringify(result, null, 2));
+}
+
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
 export async function main(argv = process.argv.slice(2)): Promise<void> {
@@ -940,6 +1033,15 @@ export async function main(argv = process.argv.slice(2)): Promise<void> {
         break;
       case 'export':
         await runExportCommand(parsed);
+        break;
+      case 'update-repo':
+        await runUpdateRepoCommand(parsed);
+        break;
+      case 'generate-api-key':
+        await runGenerateApiKeyCommand(parsed);
+        break;
+      case 'replay-event':
+        await runReplayEventCommand(parsed);
         break;
     }
   } catch (err) {

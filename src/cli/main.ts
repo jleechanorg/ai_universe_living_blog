@@ -243,12 +243,84 @@ export async function runBranchEntryCommand(args: ParsedArgs): Promise<void> {
     reviews,
   });
 
-  const promptsDir = args.outputDir ?? cfg.promptsDir;
-  mkdirSync(promptsDir, { recursive: true });
-  const promptPath = join(promptsDir, `${args.session}.md`);
-  writeFileSync(promptPath, prompt, 'utf8');
+  // output=none: skip file write
+  let promptPath: string | undefined;
+  if (args.output !== 'none') {
+    const promptsDir = args.outputDir ?? cfg.promptsDir;
+    mkdirSync(promptsDir, { recursive: true });
+    promptPath = join(promptsDir, `${args.session}.md`);
+    writeFileSync(promptPath, prompt, 'utf8');
+    console.log(`Prompt written to ${promptPath} — AO worker will generate the entry`);
+  }
 
-  console.log(`Prompt written to ${promptPath} — AO worker will generate the entry`);
+  // output=both: also POST to MCP server (best-effort, file is source of truth)
+  if (args.output === 'both') {
+    await postPromptToMcp({
+      blogServerUrl: args.blogServerUrl,
+      repoKey: args.repo!,
+      sessionId: args.session!,
+      prNumber,
+      prompt,
+      pr,
+    });
+  }
+}
+
+interface McpPostParams {
+  blogServerUrl: string;
+  repoKey: string;
+  sessionId: string;
+  prNumber: number;
+  prompt: string;
+  pr: GHPullRequest;
+}
+
+async function postPromptToMcp(params: McpPostParams): Promise<void> {
+  const { blogServerUrl, repoKey, sessionId, prNumber, prompt, pr } = params;
+  const url = `${blogServerUrl}/mcp`;
+  const body = JSON.stringify({
+    jsonrpc: '2.0',
+    id: 1,
+    method: 'tools/call',
+    params: {
+      name: 'create_post',
+      arguments: {
+        repoKey,
+        posterId: sessionId,
+        title: `Branch Entry: ${pr.title}`,
+        content: prompt,
+        eventType: 'novel_branch_entry',
+        tags: ['branch-entry', sessionId],
+        status: 'published',
+        metadata: {
+          sessionId,
+          prNumber,
+          branchName: pr.headBranch,
+          prUrl: pr.url,
+        },
+      },
+    },
+  });
+
+  try {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body,
+    });
+    if (!res.ok) {
+      console.warn(`Warning: MCP server returned ${res.status} — prompt file is still the source of truth`);
+      return;
+    }
+    const data = (await res.json()) as Record<string, unknown>;
+    const result = data.result as Record<string, unknown> | undefined;
+    const postId = (result?.content as Array<Record<string, unknown>> | undefined)?.[0]?.text;
+    if (postId) {
+      console.log(`Post created on MCP server (output=both)`);
+    }
+  } catch (err) {
+    console.warn(`Warning: could not reach MCP server — ${err instanceof Error ? err.message : String(err)}. Prompt file is the source of truth.`);
+  }
 }
 
 interface PromptData {

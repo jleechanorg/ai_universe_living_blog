@@ -41,7 +41,7 @@ jobs:
           # Poll Firestore REST API until it returns an HTTP response (up to 60s).
           # The emulator needs JVM startup + gRPC binding time after port opens.
           for i in $(seq 1 60); do
-            STATUS=$(curl -s -o /dev/null -w "%{http_code}" "http://localhost:8080/v1/projects/test-project/databases/(default)/documents" 2>/dev/null)
+            STATUS=$(curl -s -o /dev/null -w "%{http_code}" "http://localhost:8080/v1/projects/test-project/databases/(default)/documents" 2>/dev/null || true)
             if [ "$STATUS" = "200" ] || [ "$STATUS" = "404" ] || [ "$STATUS" = "400" ]; then
               echo "Firestore emulator HTTP ready (${i}s, status=${STATUS})"
               break

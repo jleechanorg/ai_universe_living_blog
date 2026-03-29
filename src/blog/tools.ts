@@ -428,6 +428,20 @@ export function createBlogToolHandlers(ctx: BlogToolContext) {
       try {
         const params = await ChatWorkerParamsSchema.parseAsync(rawParams);
 
+        // ── Tier 0: FIFO bidirectional chat (~/.blog/inbox/{workerId}) ────────
+        // If a named pipe exists for this worker, write the message to it and
+        // wait up to 5 seconds for the worker's reply. Falls through on timeout.
+        const { chatViaFifo } = await import('../novel/chat.js');
+        const fifoReply = await chatViaFifo(params.workerId, params.message);
+        if (fifoReply !== null) {
+          return toMcpResult({
+            response: fifoReply,
+            workerId: params.workerId,
+            tone: 'direct',
+            backend: 'fifo',
+          });
+        }
+
         // ── Tier 1: Local inference (OPENCLAW_INFERENCE_URL) ───────────────
         const inferenceUrl = process.env['OPENCLAW_INFERENCE_URL'] ?? '';
         if (inferenceUrl) {

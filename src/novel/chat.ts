@@ -6,6 +6,10 @@
  * system prompt. Zero additional LLM calls for voice extraction.
  */
 
+import { existsSync, openSync, writeSync, closeSync, readSync, constants } from 'node:fs';
+import { join } from 'node:path';
+import { homedir } from 'node:os';
+import { v4 as uuidv4 } from 'uuid';
 import type { BlogStorage } from '../shared/types.js';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -20,6 +24,131 @@ export interface ChatResult {
   response: string;
   workerId: string;
   tone: string;
+}
+
+// ─── FIFO bidirectional chat ─────────────────────────────────────────────────
+
+export const FIFO_INBOX_DIR = join(homedir(), '.blog', 'inbox');
+export const FIFO_OVERALL_TIMEOUT_MS = 5000;
+export const FIFO_POLL_INTERVAL_MS = 100;
+
+/** Message written by the MCP server to the FIFO. */
+export interface FifoRequest {
+  from: 'reader';
+  message: string;
+  timestamp: string;
+  threadId: string;
+}
+
+/** Message written by the AO worker to the FIFO. */
+export interface FifoResponse {
+  from: 'worker';
+  response: string;
+  timestamp: string;
+}
+
+/**
+ * Parse accumulated FIFO buffer text, returning the first worker response found
+ * (scanning lines in reverse — newest first). Returns null if no valid response.
+ */
+export function parseFifoLines(accumulated: string): string | null {
+  const lines = accumulated.split('\n').filter(Boolean);
+  for (const line of lines.reverse()) {
+    try {
+      const parsed = JSON.parse(line) as Partial<FifoResponse>;
+      if (parsed.from === 'worker' && typeof parsed.response === 'string') {
+        return parsed.response;
+      }
+    } catch {
+      // not valid JSON
+    }
+  }
+  return null;
+}
+
+/**
+ * Try to send a message to an AO worker via named pipe and read back its reply.
+ *
+ * Protocol:
+ * 1. Check if `{inboxDir}/{workerId}` exists (any file or FIFO)
+ * 2. Open it O_RDWR so both sides share the same fd (non-blocking)
+ * 3. Write JSON request message
+ * 4. Poll for a JSON response line with overall timeout
+ * 5. Return the response string, or null on timeout / error
+ *
+ * @param workerId   - Worker session ID (e.g. "ao-826")
+ * @param message    - The user's question
+ * @param inboxDir   - Directory containing inbox FIFOs (default: ~/.blog/inbox)
+ * @param timeoutMs  - Overall timeout in ms (default: 5000)
+ * @returns Response string from worker, or null if no response within timeout
+ */
+export async function chatViaFifo(
+  workerId: string,
+  message: string,
+  inboxDir: string = FIFO_INBOX_DIR,
+  timeoutMs: number = FIFO_OVERALL_TIMEOUT_MS,
+): Promise<string | null> {
+  const fifoPath = join(inboxDir, workerId);
+  if (!existsSync(fifoPath)) return null;
+
+  const req: FifoRequest = {
+    from: 'reader',
+    message,
+    timestamp: new Date().toISOString(),
+    threadId: uuidv4(),
+  };
+  const reqLine = JSON.stringify(req) + '\n';
+
+  let fd: number;
+  try {
+    // O_RDWR | O_NONBLOCK: open without blocking even if no one has the other end open.
+    // On Linux this succeeds immediately for FIFOs; on macOS O_RDWR on a FIFO is POSIX-defined.
+    fd = openSync(fifoPath, constants.O_RDWR | constants.O_NONBLOCK);
+  } catch {
+    // No reader on the other end (ENXIO) or other error — skip FIFO
+    return null;
+  }
+
+  try {
+    writeSync(fd, reqLine);
+  } catch {
+    closeSync(fd);
+    return null;
+  }
+
+  // Poll for response line
+  const buf = Buffer.alloc(8192);
+  let accumulated = '';
+  const deadline = Date.now() + timeoutMs;
+
+  while (Date.now() < deadline) {
+    let n: number;
+    try {
+      n = readSync(fd, buf, 0, buf.length, null);
+    } catch (err: unknown) {
+      // EAGAIN / EWOULDBLOCK = no data yet, keep polling
+      const code = (err as NodeJS.ErrnoException).code;
+      if (code === 'EAGAIN' || code === 'EWOULDBLOCK') {
+        await new Promise((r) => setTimeout(r, FIFO_POLL_INTERVAL_MS));
+        continue;
+      }
+      break; // unexpected error
+    }
+
+    if (n > 0) {
+      accumulated += buf.subarray(0, n).toString('utf8');
+      const response = parseFifoLines(accumulated);
+      if (response !== null) {
+        closeSync(fd);
+        return response;
+      }
+    }
+
+    await new Promise((r) => setTimeout(r, FIFO_POLL_INTERVAL_MS));
+  }
+
+  closeSync(fd);
+  return null; // timeout
 }
 
 // ─── Voice extraction (regex heuristics, 0 LLM calls) ───────────────────────

@@ -84,6 +84,10 @@ describe('install.sh smoke test', () => {
       // This lets the smoke test test the local build (which may differ from main).
       exec(`bash "${scriptPath}" --target="${TEST_DIR}" --source="${repoRoot}" --blog-only`, repoRoot);
 
+      // install.sh stages the package but doesn't run npm install — do it now so
+      // the installed server can resolve express and other runtime dependencies.
+      exec('npm install --prefer-offline 2>/dev/null || npm install', TEST_DIR);
+
       // ── Verify dist/blog/server.js was installed ────────────────────────────
       const installedServer = join(TEST_DIR, 'node_modules', 'ai-universe-living-blog', 'dist', 'blog', 'server.js');
       expect(existsSync(installedServer), `blog server must be installed at ${installedServer}`).toBe(true);

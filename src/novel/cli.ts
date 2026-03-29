@@ -59,10 +59,10 @@ async function loadConfig(configPath?: string): Promise<NovelConfig> {
 }
 
 /** Resolve storage type: CLI flag → STORAGE_TYPE env var → 'memory' default. Validates to fail fast on misconfiguration. */
-function resolveStorageType(flagValue?: string): 'memory' | 'firestore' {
+function resolveStorageType(flagValue?: string): 'memory' | 'file' | 'firestore' {
   const raw = (flagValue ?? process.env['STORAGE_TYPE'] ?? 'memory').trim().toLowerCase();
-  if (raw !== 'memory' && raw !== 'firestore') {
-    throw new Error(`Invalid storage type: "${raw}". Expected "memory" or "firestore".`);
+  if (raw !== 'memory' && raw !== 'file' && raw !== 'firestore') {
+    throw new Error(`Invalid storage type: "${raw}". Expected "memory", "file", or "firestore".`);
   }
   return raw;
 }

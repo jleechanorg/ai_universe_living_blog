@@ -99,7 +99,7 @@ describe('POST /webhook', () => {
       .set('Content-Type', 'application/json')
       .send(body);
     expect(res.status).toBe(400);
-    expect(res.body.error).toMatch(/signature/i);
+    expect(res.body.error).toBe('Invalid signature');
   });
 
   // 3
@@ -112,7 +112,7 @@ describe('POST /webhook', () => {
       .set('Content-Type', 'application/json')
       .send(body);
     expect(res.status).toBe(400);
-    expect(res.body.error).toMatch(/signature/i);
+    expect(res.body.error).toBe('Missing X-Hub-Signature-256 header');
   });
 
   // 4

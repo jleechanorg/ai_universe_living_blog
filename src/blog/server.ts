@@ -61,6 +61,30 @@ const STORAGE_PROJECT_ID = process.env['FIRESTORE_PROJECT_ID'];
 const DATA_DIR = process.env['DATA_DIR'] ?? 'data/';
 const WEBHOOK_SECRET = process.env['WEBHOOK_SECRET'];
 const GITHUB_TOKEN = process.env['GITHUB_TOKEN'];
+
+// ── Demo mode flags ──────────────────────────────────────────────────────────
+const DEMO_MODE = process.argv.includes('--demo');
+const DEMO_REPO = (() => {
+  const eqFlag = process.argv.find((a) => a.startsWith('--repo='));
+  if (eqFlag) return eqFlag.split('=').slice(1).join('=');
+  const idx = process.argv.findIndex((a) => a === '--repo');
+  if (idx !== -1 && idx + 1 < process.argv.length) return process.argv[idx + 1]!;
+  return process.env['DEMO_REPO'];
+})();
+const DEMO_MAX_COMMITS = (() => {
+  const eqFlag = process.argv.find((a) => a.startsWith('--max-commits='));
+  if (eqFlag) return parseInt(eqFlag.split('=')[1]!, 10) || 100;
+  const idx = process.argv.findIndex((a) => a === '--max-commits');
+  if (idx !== -1) return parseInt(process.argv[idx + 1] ?? '100', 10) || 100;
+  return 100;
+})();
+const DEMO_SESSION_PREFIX = (() => {
+  const eqFlag = process.argv.find((a) => a.startsWith('--session-prefix='));
+  if (eqFlag) return eqFlag.split('=').slice(1).join('=');
+  const idx = process.argv.findIndex((a) => a === '--session-prefix');
+  if (idx !== -1 && idx + 1 < process.argv.length) return process.argv[idx + 1]!;
+  return 'demo-';
+})();
 const STORAGE_COLLECTION = process.env['FIRESTORE_COLLECTION'] ?? 'posts';
 const NODE_ENV = process.env['NODE_ENV'] ?? 'development';
 const ALLOWED_ORIGINS = process.env['ALLOWED_ORIGINS']
@@ -260,6 +284,32 @@ async function main() {
     logger.info(`Blog MCP server running on port ${getPort()}`);
     logger.info(`Health: http://localhost:${getPort()}/health`);
     logger.info(`MCP:    http://localhost:${getPort()}/mcp`);
+
+    if (DEMO_MODE) {
+      if (!DEMO_REPO) {
+        logger.error('Demo mode requires --repo owner/repo');
+        process.exit(1);
+      }
+      // Run demo mode asynchronously after server is up
+      void (async () => {
+        const { runDemoMode } = await import('./demo.js');
+        const demoStorage = createStorage({
+          type: STORAGE_TYPE as 'memory' | 'file' | 'firestore',
+          projectId: STORAGE_PROJECT_ID,
+          collection: STORAGE_COLLECTION,
+        });
+        runDemoMode(demoStorage, {
+          repo: DEMO_REPO!,
+          maxCommits: DEMO_MAX_COMMITS,
+          sessionPrefix: DEMO_SESSION_PREFIX,
+          githubToken: GITHUB_TOKEN,
+        }).then((n) => {
+          logger.info(`Demo mode: ${n} posts created — server ready`);
+        }).catch((err: unknown) => {
+          logger.error('Demo mode failed', { err: String(err) });
+        });
+      })();
+    }
   });
 
   for (const sig of ['SIGINT', 'SIGTERM'] as const) {

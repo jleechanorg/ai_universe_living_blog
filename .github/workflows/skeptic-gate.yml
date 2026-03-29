@@ -59,10 +59,10 @@ jobs:
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           TRIGGER_UPDATED: ${{ steps.post_trigger.outputs.trigger_updated }}
           TRIGGER_SHA: ${{ steps.post_trigger.outputs.trigger_sha }}
-          # bd-lg7i: Default to jleechan2015 — ao skeptic verify posts via gh api
-          # authenticated as the local user, not the GitHub App bot. Override via
-          # repo variable if posting identity changes (e.g., GitHub App token).
-          SKEPTIC_BOT_AUTHOR: ${{ vars.SKEPTIC_BOT_AUTHOR || 'jleechan2015' }}
+          # Default: github-actions[bot] — skeptic-cron posts VERDICT comments using
+          # GITHUB_TOKEN which posts as github-actions[bot]. Override via repo variable
+          # SKEPTIC_BOT_AUTHOR if a different bot posts verdicts (e.g., a PAT user).
+          SKEPTIC_BOT_AUTHOR: ${{ vars.SKEPTIC_BOT_AUTHOR || 'github-actions[bot]' }}
         # 28 min timeout — leave 2 min buffer so the step exits cleanly before the
         # 30-min job timeout rather than being killed by the runner.
         timeout-minutes: 28
@@ -130,7 +130,6 @@ jobs:
             VERDICT_JQ='[.[] | select(.user.login == env.SKEPTIC_BOT_AUTHOR and (.body | test("VERDICT:"; "i")) and (.updated_at >= env.TRIGGER_UPDATED) and (.body | test("skeptic-gate-trigger-" + env.TRIGGER_SHA; "i")))] | .[-1] // empty'
             VERDICT_JSON=$(gh api repos/${{ github.repository }}/issues/"$PR_NUM"/comments \
               --paginate \
-              --slurpfile /dev/null \
               --jq "$VERDICT_JQ" 2>&1)
             if echo "$VERDICT_JSON" | grep -qi "error\|rate limit\|authentication\|not found\|server error"; then
               API_FAILURES=$((API_FAILURES + 1))

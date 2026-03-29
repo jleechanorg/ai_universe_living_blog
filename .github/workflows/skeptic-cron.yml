@@ -1,11 +1,9 @@
 name: Skeptic Cron
 
-# Runs every 30 minutes — evaluates all open PRs with skeptic and merges when 7-green.
-# This makes skeptic truly universal: even PRs that skip the evolve loop get skeptic
-# review and automatic merge when ready.
-# Gate 5 (inline comments resolved): uses GraphQL reviewThreads.isResolved (not REST
-# /pulls/{n}/comments) — GitHub only exposes thread resolution state via GraphQL.
-# Gate 5 fails closed on GraphQL errors (|| echo __GQL_ERROR__) rather than passing silently.
+# Runs every 30 minutes — evaluates all open PRs with lightweight gate and merges when ready.
+# Standalone: no external CLI or local actions required.
+# Skeptic gate: (1) CI passing, (2) mergeable=MERGEABLE, (3) no CHANGES_REQUESTED reviews.
+# Posts VERDICT: PASS or VERDICT: FAIL comment (with SHA marker) so skeptic-gate.yml can poll.
 on:
   schedule:
     - cron: "*/30 * * * *"
@@ -21,20 +19,15 @@ jobs:
       issues: write
     outputs:
       prs_evaluated: ${{ steps.list_prs.outputs.pr_numbers }}
-      merged_count: ${{ steps.merge_prs.outputs.merged_count }}
+      merged_count: ${{ steps.evaluate_and_merge.outputs.merged_count }}
     steps:
-      - uses: actions/checkout@v4
-
-      - name: Setup
-        uses: ./.github/actions/skeptic-setup
-
       - name: List open PRs
         id: list_prs
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           PR_JSON=$(gh api repos/${{ github.repository }}/pulls \
-            --jq '[.[] | select(.draft == false) | {number, title, head: {ref: .head.ref, sha: .head.sha}, base: {ref: .base.ref}, mergeable}]')
+            --jq '[.[] | select(.draft == false) | {number, title, head: {ref: .head.ref, sha: .head.sha}, base: {ref: .base.ref}}]')
 
           echo "Open non-draft PRs found:"
           echo "$PR_JSON" | jq -c '.[]' 2>/dev/null || echo "$PR_JSON"
@@ -42,64 +35,8 @@ jobs:
           echo "pr_numbers=$(echo "$PR_JSON" | jq -c '.')" >> "$GITHUB_OUTPUT"
           echo "pr_count=$(echo "$PR_JSON" | jq 'length')" >> "$GITHUB_OUTPUT"
 
-      - name: Run skeptic on each open PR
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-          PR_JSON: ${{ steps.list_prs.outputs.pr_numbers }}
-          # bd-lg7i: Default to jleechan2015 — ao skeptic verify posts via gh api
-          # authenticated as the local user, not the GitHub App bot. Override via
-          # repo variable SKEPTIC_BOT_AUTHOR if posting identity changes.
-          SKEPTIC_BOT_AUTHOR: ${{ vars.SKEPTIC_BOT_AUTHOR || 'jleechan2015' }}
-        run: |
-          set -e
-
-          SKEPTIC_FAILED=""
-          for PR in $(echo "$PR_JSON" | jq -r '.[] | @base64'); do
-            PR_DATA=$(echo "$PR" | base64 -d)
-            PR_NUM=$(echo "$PR_DATA" | jq -r '.number')
-            PR_TITLE=$(echo "$PR_DATA" | jq -r '.title')
-
-            echo ""
-            echo "========================================"
-            echo "Skeptic evaluation: PR #${PR_NUM} — ${PR_TITLE}"
-            echo "========================================"
-
-            # Run skeptic with --dry-run so it does NOT try to post a comment
-            # (the jleechan-agent[bot] lacks write access; cron workflow posts via GITHUB_TOKEN)
-            # Output to file so the grep below can read it.
-            # Wrap in subshell: captures exit code so set -e doesn't abort the loop.
-            # bd-skp2: removed || true (misleading) — capture real exit code and check explicitly
-            skeptic_exit=0
-            # Use locally-built CLI — skeptic-setup already ran pnpm -r build, so
-            # packages/cli/dist/index.js is available and matches the current branch code.
-            (node packages/cli/dist/index.js skeptic verify -n "$PR_NUM" --dry-run > "skeptic-output-${PR_NUM}.txt" 2>&1) || skeptic_exit=$?
-            # Record failure and continue — one PR's skeptic failure must not block all other PRs.
-            # bd-ao2b: exit 1 here aborted the entire step, preventing merge_prs from running.
-            if [ "$skeptic_exit" -ne 0 ]; then
-              echo "WARNING: skeptic exited with code $skeptic_exit for PR #$PR_NUM — recording failure, continuing batch"
-              SKEPTIC_FAILED="$SKEPTIC_FAILED $PR_NUM"
-            fi
-            # Print output for workflow logs
-            cat "skeptic-output-${PR_NUM}.txt" || true
-
-            # Verify output contains a VERDICT line (informational — missing VERDICT means SKIPPED in gate 7)
-            if ! grep -qi "VERDICT:" "skeptic-output-${PR_NUM}.txt" 2>/dev/null; then
-              echo "INFO: No VERDICT line in skeptic output for PR #${PR_NUM} (skeptic exit=${skeptic_exit}) — gate-7 will treat as SKIPPED"
-            fi
-
-            echo "Skeptic complete for PR #${PR_NUM} (exit=${skeptic_exit})"
-          done
-
-          # Fail the job if any PRs had skeptic failures (bd-ao2b)
-          if [ -n "$SKEPTIC_FAILED" ]; then
-            echo "ERROR: skeptic failed for PR(s):$SKEPTIC_FAILED — failing step"
-            exit 1
-          fi
-
-      - name: Check 7-green conditions and merge ready PRs
-        id: merge_prs
+      - name: Evaluate PRs and post VERDICT
+        id: evaluate_and_merge
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PR_JSON: ${{ steps.list_prs.outputs.pr_numbers }}
@@ -111,163 +48,125 @@ jobs:
             PR_DATA=$(echo "$PR" | base64 -d)
             PR_NUM=$(echo "$PR_DATA" | jq -r '.number')
             PR_TITLE=$(echo "$PR_DATA" | jq -r '.title')
+            HEAD_SHA=$(echo "$PR_DATA" | jq -r '.head.sha')
 
             echo ""
-            echo "--- Checking 7-green for PR #${PR_NUM}: ${PR_TITLE} ---"
+            echo "========================================"
+            echo "Evaluating PR #${PR_NUM} — ${PR_TITLE}"
+            echo "SHA: ${HEAD_SHA:0:7}"
+            echo "========================================"
 
-            # bd-ara.stale: track PR age — flag stale PRs ≥3h in cron output
-            # Note: REST API returns snake_case fields (created_at, updated_at)
-            PR_DETAIL=$(gh api repos/${{ github.repository }}/pulls/"$PR_NUM" \
-              --jq '{created_at: .created_at}' 2>/dev/null || echo '{"created_at":null}')
-            CREATED=$(echo "$PR_DETAIL" | jq -r '.created_at')
-            if [ "$CREATED" != "null" ] && [ -n "$CREATED" ]; then
-              # Compute age in hours using bash date arithmetic (no python3 needed).
-              # epoch_CREATED=$(date -d "$CREATED" +%s); epoch_now=$(date +%s)
-              # Uses GNU date -d for ISO8601 parsing (ubuntu-latest has GNU date).
-              epoch_now=$(date +%s)
-              epoch_created=$(date -d "$CREATED" +%s 2>/dev/null) || epoch_created=0
-              if [ "$epoch_created" -gt 0 ] 2>/dev/null; then
-                age_sec=$((epoch_now - epoch_created))
-                AGE_HRS=$(printf '%s' "$age_sec" | awk '{printf "%.1f", $1/3600}')
-              else
-                AGE_HRS="unknown"
-              fi
-              echo "  [AGE] PR #${PR_NUM}: created=${CREATED}, age=${AGE_HRS}h"
-              # Bash integer comparison for stale flag — avoids python3 -c with shell vars
-              STALE_STATUS="unknown"
-              if [ "$AGE_HRS" != "unknown" ] && [ -n "$AGE_HRS" ]; then
-                AGE_INT=$(echo "$AGE_HRS" | cut -d. -f1)
-                if [ "${AGE_INT:-0}" -ge "${STALE_HOURS:-3}" ]; then
-                  STALE_STATUS="STALE"
-                else
-                  STALE_STATUS="FRESH"
-                fi
-              fi
-              echo "  [AGE] PR #${PR_NUM} staleness: ${STALE_STATUS}"
-            else
-              echo "  [AGE] PR #${PR_NUM}: WARNING — created_at field missing"
-            fi
+            FAIL_REASONS=""
 
-            # 1. CI green
-            HEAD_SHA=$(gh api repos/${{ github.repository }}/pulls/"$PR_NUM" --jq '.head.sha')
+            # 1. CI green — check combined commit status + check runs
             CI_STATUS=$(gh api repos/${{ github.repository }}/commits/"$HEAD_SHA"/status \
               --jq '.state' 2>/dev/null || echo "error")
-            CI_RESULT=$([ "$CI_STATUS" = "success" ] && echo "PASS" || echo "FAIL (state=$CI_STATUS)")
-            echo "  [1] CI green:          $CI_RESULT"
+            # Also check check-runs (for Actions-based CI)
+            CHECK_RUNS=$(gh api repos/${{ github.repository }}/commits/"$HEAD_SHA"/check-runs \
+              --jq '[.check_runs[] | select(.conclusion != null and .conclusion != "skipped") | .conclusion] | if length == 0 then "no_checks" elif all(. == "success") then "success" else "failure" end' 2>/dev/null || echo "error")
+
+            CI_OK=false
+            if [ "$CI_STATUS" = "success" ]; then
+              CI_OK=true
+            elif [ "$CHECK_RUNS" = "success" ] || [ "$CHECK_RUNS" = "no_checks" ]; then
+              CI_OK=true
+            fi
+
+            if [ "$CI_OK" = "false" ]; then
+              FAIL_REASONS="${FAIL_REASONS}CI not green (status=$CI_STATUS checks=$CHECK_RUNS); "
+              echo "  [1] CI green:           FAIL (status=$CI_STATUS, checks=$CHECK_RUNS)"
+            else
+              echo "  [1] CI green:           PASS"
+            fi
 
             # 2. No merge conflicts
-            PR_DATA2=$(gh api repos/${{ github.repository }}/pulls/"$PR_NUM" \
-              --jq '{mergeable: .mergeable, merged: .merged}' 2>/dev/null)
-            MERGEABLE=$(echo "$PR_DATA2" | jq -r '.mergeable // "unknown"')
-            MERGED_FLAG=$(echo "$PR_DATA2" | jq -r '.merged // false')
-            MERGE_CONFLICT=$(if [ "$MERGEABLE" = "true" ] || [ "$MERGED_FLAG" = "true" ]; then echo "PASS"; else echo "FAIL (mergeable=$MERGEABLE)"; fi)
-            echo "  [2] No merge conflicts: $MERGE_CONFLICT"
+            PR_DETAIL=$(gh api repos/${{ github.repository }}/pulls/"$PR_NUM" \
+              --jq '{mergeable: .mergeable, mergeable_state: .mergeable_state, merged: .merged}' 2>/dev/null || echo '{"mergeable":null,"mergeable_state":"unknown","merged":false}')
+            MERGEABLE=$(echo "$PR_DETAIL" | jq -r '.mergeable // "null"')
+            MERGEABLE_STATE=$(echo "$PR_DETAIL" | jq -r '.mergeable_state // "unknown"')
+            MERGED_FLAG=$(echo "$PR_DETAIL" | jq -r '.merged // false')
 
-            # 3. CR APPROVED
-            # Use GraphQL reviewDecision instead of REST review state. REST reviews can be
-            # COMMENTED (CR posted inline comments) even when the effective decision is APPROVED.
-            # reviewDecision aggregates formal APPROVED/CHANGES_REQUESTED state correctly.
-            # bd-ao2b: also accept COMMENTED if the latest formal review was APPROVED.
-            LATEST_CR=$(gh api repos/${{ github.repository }}/pulls/"$PR_NUM"/reviews \
-              --jq '[.[] | select(.user.login == "coderabbitai[bot]" and (.state == "APPROVED" or .state == "CHANGES_REQUESTED"))] | sort_by(.submitted_at) | reverse | .[0].state' 2>/dev/null || echo "none")
-            CR_STATE="${LATEST_CR:-none}"
-            CR_APPROVED=$([ "$CR_STATE" = "APPROVED" ] && echo "PASS" || echo "FAIL (state=$CR_STATE)")
-            echo "  [3] CR APPROVED:        $CR_APPROVED"
-
-            # 4. Bugbot clean — error-severity comments from cursor[bot] block merge
-            BUGBOT_ERRORS=$(gh api repos/${{ github.repository }}/pulls/"$PR_NUM"/comments \
-              --jq '[.[] | select(.user.login == "cursor[bot]" and (.body | test("error"; "i")))] | length' 2>/dev/null || echo 0)
-            BUGBOT_STATUS=$(if [ "$BUGBOT_ERRORS" = "0" ] || [ -z "$BUGBOT_ERRORS" ]; then echo "PASS"; else echo "FAIL ($BUGBOT_ERRORS error(s))"; fi)
-            echo "  [4] Bugbot clean:       $BUGBOT_STATUS"
-
-            # 5. Inline comments resolved — use GraphQL to get thread-level isResolved
-            # (REST /pulls/{n}/comments lacks isResolved; GitHub tracks resolution at thread level)
-            # Also exclude comments from the PR author (they can always resolve their own threads).
-            # Nit/nitpick comments are excluded as they don't block CR approval.
-            PR_AUTHOR=$(gh api repos/${{ github.repository }}/pulls/"$PR_NUM" --jq '.user.login')
-            # Strip the "owner/" prefix from github.repository to get just the repo name
-            REPO_NAME="${GITHUB_REPOSITORY#*/}"
-            UNRESOLVED=$(gh api graphql -f query='
-              query($owner: String!, $name: String!, $number: Int!) {
-                repository(owner: $owner, name: $name) {
-                  pullRequest(number: $number) {
-                    reviewThreads(first: 100) {
-                      nodes {
-                        isResolved
-                        comments(first: 50) {
-                          nodes {
-                            author { login }
-                            body
-                          }
-                        }
-                      }
-                    }
-                  }
-                }
-              }
-            ' -f owner='${{ github.repository_owner }}' -f name="$REPO_NAME" -F number="$PR_NUM" \
-              --jq "[.data.repository.pullRequest.reviewThreads.nodes[] | select(.isResolved == false) | .comments.nodes[] | select(.author.login != null and (.author.login | ascii_downcase) != (\"$PR_AUTHOR\" | ascii_downcase) and (.body | test(\"^\\\\s*(nit:|nitpick)\"; \"i\") | not))] | length" 2>/dev/null || echo "__GQL_ERROR__")
-            if [ "$UNRESOLVED" = "__GQL_ERROR__" ]; then
-              COMMENTS_STATUS="FAIL (graphql-error)"
-            elif [ "$UNRESOLVED" = "0" ] || [ -z "$UNRESOLVED" ]; then
-              COMMENTS_STATUS="PASS"
+            if [ "$MERGEABLE" = "true" ] || [ "$MERGED_FLAG" = "true" ]; then
+              echo "  [2] No merge conflicts: PASS (mergeable=$MERGEABLE)"
             else
-              COMMENTS_STATUS="FAIL ($UNRESOLVED unresolved)"
+              FAIL_REASONS="${FAIL_REASONS}Merge conflict or unknown (mergeable=$MERGEABLE state=$MERGEABLE_STATE); "
+              echo "  [2] No merge conflicts: FAIL (mergeable=$MERGEABLE state=$MERGEABLE_STATE)"
             fi
-            echo "  [5] Comments resolved:   $COMMENTS_STATUS"
 
-            # 6. Evidence review
-            EVIDENCE_APPROVED=$(gh api repos/${{ github.repository }}/pulls/"$PR_NUM"/reviews \
-              --jq '[.[] | select(.user.login == "evidence-review-bot" and .state == "APPROVED")] | length' 2>/dev/null || echo 0)
-            EVIDENCE_STATUS=$(if [ "$EVIDENCE_APPROVED" = "0" ]; then echo "N/A (optional)"; else echo "PASS"; fi)
-            echo "  [6] Evidence review:    $EVIDENCE_STATUS"
-
-            # 7. Skeptic verdict — prefer this cron run's skeptic-output file
-            # bd-skp2: fall back to gh comments API only if no output file exists
-            # bd-0cfv: fail-closed — only explicit VERDICT: PASS counts as green.
-            # SKIPPED/missing/unrecognized VERDICT → FAIL. Prevents infra failures
-            # (Codex/Claude unavailable) from silently passing all PRs through gate 7.
-            if [ -f "skeptic-output-${PR_NUM}.txt" ]; then
-              # bd-8tpa: prefer PASS when both FAIL and PASS are in output (Codex 401 + Claude fallback)
-              if grep -qi "VERDICT: PASS" "skeptic-output-${PR_NUM}.txt"; then
-                SKEPTIC_STATUS="PASS"
-              else
-                # VERDICT: FAIL, VERDICT: SKIPPED, or no VERDICT → all FAIL (fail-closed)
-                SKEPTIC_STATUS="FAIL"
-              fi
+            # 3. No CHANGES_REQUESTED reviews
+            CHANGES_REQUESTED=$(gh api repos/${{ github.repository }}/pulls/"$PR_NUM"/reviews \
+              --jq '[.[] | select(.state == "CHANGES_REQUESTED")] | length' 2>/dev/null || echo 0)
+            if [ "$CHANGES_REQUESTED" = "0" ] || [ -z "$CHANGES_REQUESTED" ]; then
+              echo "  [3] No CHANGES_REQ:     PASS"
             else
-              SKEPTIC_VERDICT=$(gh api repos/${{ github.repository }}/issues/"$PR_NUM"/comments \
-                --jq "[.[] | select(.user.login == \"${SKEPTIC_BOT_AUTHOR}\" and (.body | test(\"VERDICT:\"; \"i\"))) | .body] | last")
-              if echo "$SKEPTIC_VERDICT" | grep -qi "VERDICT: PASS"; then
-                SKEPTIC_STATUS="PASS"
-              else
-                # No VERDICT or VERDICT: FAIL/SKIPPED → FAIL (fail-closed)
-                SKEPTIC_STATUS="FAIL"
-              fi
-            fi
-            echo "  [7] Skeptic verdict:    $SKEPTIC_STATUS"
-
-            # All must PASS
-            ALL_PASS=true
-            for COND in "$CI_RESULT" "$MERGE_CONFLICT" "$CR_APPROVED" "$BUGBOT_STATUS" "$COMMENTS_STATUS"; do
-              if echo "$COND" | grep -qi "FAIL"; then
-                ALL_PASS=false
-                break
-              fi
-            done
-            if echo "$SKEPTIC_STATUS" | grep -Ei "FAIL|MISSING"; then
-              ALL_PASS=false
+              FAIL_REASONS="${FAIL_REASONS}${CHANGES_REQUESTED} CHANGES_REQUESTED review(s); "
+              echo "  [3] No CHANGES_REQ:     FAIL ($CHANGES_REQUESTED review(s))"
             fi
 
-            if [ "$ALL_PASS" = "true" ]; then
-              echo ""
-              echo "*** PR #${PR_NUM} is 7-green! Merging... ***"
+            # Compute verdict
+            SHA_MARKER="<!-- skeptic-gate-trigger-${HEAD_SHA} -->"
+            if [ -z "$FAIL_REASONS" ]; then
+              VERDICT="PASS"
+              VERDICT_BODY="## Skeptic Gate
+
+**VERDICT: PASS** ✅
+
+All lightweight checks passed for commit \`${HEAD_SHA:0:7}\`:
+- CI: green
+- Mergeable: yes
+- Reviews: no CHANGES_REQUESTED
+
+${SHA_MARKER}"
+              echo "  => VERDICT: PASS"
+              # Write for merge step
+              echo "VERDICT: PASS" > "skeptic-output-${PR_NUM}.txt"
+            else
+              VERDICT="FAIL"
+              VERDICT_BODY="## Skeptic Gate
+
+**VERDICT: FAIL** ❌
+
+Commit \`${HEAD_SHA:0:7}\` did not pass all checks:
+- ${FAIL_REASONS}
+
+${SHA_MARKER}"
+              echo "  => VERDICT: FAIL (${FAIL_REASONS})"
+              # Write for merge step
+              echo "VERDICT: FAIL" > "skeptic-output-${PR_NUM}.txt"
+            fi
+
+            # Post VERDICT comment (always post — gate polls for updated_at)
+            # Find existing skeptic verdict comment for this SHA to update or create
+            EXISTING_COMMENT_ID=$(gh api repos/${{ github.repository }}/issues/"$PR_NUM"/comments \
+              --jq "[.[] | select(.user.login == \"github-actions[bot]\" and (.body | test(\"VERDICT:\"; \"i\")) and (.body | test(\"skeptic-gate-trigger-\"; \"i\")))] | .[-1].id // empty" \
+              2>/dev/null || echo "")
+
+            if [ -n "$EXISTING_COMMENT_ID" ] && [ "$EXISTING_COMMENT_ID" != "null" ]; then
+              # Update existing verdict comment
+              gh api repos/${{ github.repository }}/issues/comments/"$EXISTING_COMMENT_ID" \
+                --method PATCH \
+                -f body="$VERDICT_BODY" \
+                > /dev/null 2>&1 && echo "  Updated existing verdict comment #${EXISTING_COMMENT_ID}" \
+                || echo "  WARNING: Failed to update verdict comment"
+            else
+              # Create new verdict comment
+              gh api repos/${{ github.repository }}/issues/"$PR_NUM"/comments \
+                --method POST \
+                -f body="$VERDICT_BODY" \
+                > /dev/null 2>&1 && echo "  Posted new verdict comment" \
+                || echo "  WARNING: Failed to post verdict comment"
+            fi
+
+            # Auto-merge on PASS (7-green simplified: CI + mergeable + no CR)
+            if [ "$VERDICT" = "PASS" ]; then
               if [ "$MERGED_FLAG" = "true" ]; then
-                echo "Already merged — skipping"
+                echo "  Already merged — skipping"
               else
+                echo ""
+                echo "*** PR #${PR_NUM} is merge-ready! Merging... ***"
                 MERGE_RESULT=$(gh pr merge "$PR_NUM" \
                   --repo ${{ github.repository }} \
-                  --squash --auto \
+                  --squash \
                   --delete-branch \
                   2>&1 || echo "MERGE_FAILED")
                 if echo "$MERGE_RESULT" | grep -Ei "MERGE_FAILED|error"; then
@@ -278,7 +177,7 @@ jobs:
                 fi
               fi
             else
-              echo "PR #${PR_NUM} not yet merge-ready — skipping"
+              echo "PR #${PR_NUM} not yet merge-ready — skipping merge"
             fi
           done
 

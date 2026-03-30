@@ -152,6 +152,18 @@ export const ReplayEventParamsSchema = z.object({
   content: z.string().optional(),
 });
 
+export const ReactToPostParamsSchema = z.object({
+  repoKey: RepoKeySchema,
+  postId: z.string().uuid(),
+  workerId: z.string().min(1),
+  emoji: z.string().min(1).max(32),
+});
+
+export const GetReactionsParamsSchema = z.object({
+  repoKey: RepoKeySchema,
+  postId: z.string().uuid(),
+});
+
 /**
  * Blog MCP tools — each returns MCP-compatible { content, isError }.
  * The server wraps these with BlogToolContext via closure.
@@ -816,6 +828,75 @@ export function createBlogToolHandlers(ctx: BlogToolContext) {
         ok: true,
         postId: parsed.post?.id ?? parsed.postId,
         replayed: true,
+      });
+    } catch (err) {
+      return toMcpError(err instanceof z.ZodError
+        ? err.errors.map((e) => `${e.path.join('.')}: ${e.message}`).join('; ')
+        : String(err));
+    }
+  };
+
+  // ─── post_reaction tools ─────────────────────────────────────────────────────
+
+  handlers.react_to_post = async function react_to_post(rawParams: unknown) {
+    try {
+      const params = await ReactToPostParamsSchema.parseAsync(rawParams);
+
+      const post = await ctx.storage.getPost(params.postId);
+      if (!post) return toMcpError(`Post not found: ${params.postId}`);
+      if (post.repoKey !== params.repoKey) return toMcpError(`Post not found in repo: ${params.repoKey}`);
+
+      const reactions = { ...post.reactions };
+      const current = reactions[params.emoji] ?? [];
+      if (current.includes(params.workerId)) {
+        // Toggle off
+        const updated = current.filter((id) => id !== params.workerId);
+        if (updated.length === 0) {
+          delete reactions[params.emoji];
+        } else {
+          reactions[params.emoji] = updated;
+        }
+      } else {
+        // Toggle on
+        reactions[params.emoji] = [...current, params.workerId];
+      }
+
+      const updated = await ctx.storage.updatePost(params.postId, { reactions });
+      logger.debug('react_to_post OK', { postId: params.postId, emoji: params.emoji, workerId: params.workerId });
+      return toMcpResult({
+        postId: params.postId,
+        emoji: params.emoji,
+        workerId: params.workerId,
+        added: !current.includes(params.workerId),
+        reactions: updated.reactions ?? {},
+      });
+    } catch (err) {
+      return toMcpError(err instanceof z.ZodError
+        ? err.errors.map((e) => `${e.path.join('.')}: ${e.message}`).join('; ')
+        : String(err));
+    }
+  };
+
+  handlers.get_reactions = async function get_reactions(rawParams: unknown) {
+    try {
+      const params = await GetReactionsParamsSchema.parseAsync(rawParams);
+
+      const post = await ctx.storage.getPost(params.postId);
+      if (!post) return toMcpError(`Post not found: ${params.postId}`);
+      if (post.repoKey !== params.repoKey) return toMcpError(`Post not found in repo: ${params.repoKey}`);
+
+      const reactions = post.reactions ?? {};
+      const summary = Object.entries(reactions).map(([emoji, workerIds]) => ({
+        emoji,
+        count: workerIds.length,
+        workers: workerIds,
+      }));
+
+      return toMcpResult({
+        postId: params.postId,
+        reactions,
+        summary,
+        totalReactions: summary.reduce((acc, r) => acc + r.count, 0),
       });
     } catch (err) {
       return toMcpError(err instanceof z.ZodError

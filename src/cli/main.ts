@@ -1130,7 +1130,7 @@ export function formatPostLine(post: { createdAt: string; eventType: string; rep
 
 interface ListPostsRpcResult {
   posts: Array<{ id: string; createdAt: string; eventType: string; repoKey: string; title: string }>;
-  nextCursor?: string;
+  cursor?: string;
 }
 
 /**
@@ -1179,7 +1179,7 @@ async function fetchAllPosts(
 
     const result = (await callMcpTool(blogServerUrl, 'list_posts', params)) as unknown as ListPostsRpcResult;
     allPosts.push(...result.posts);
-    cursor = result.nextCursor;
+    cursor = result.cursor;
   } while (cursor && allPosts.length < MAX_FETCH);
 
   return allPosts;

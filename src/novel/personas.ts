@@ -4,8 +4,9 @@
  * 6 named worker archetypes with distinct voice, speech patterns, and
  * emotional baselines for The Daily Lives of Workers fiction.
  *
- * Deterministic lookup by workerId prefix hash — no randomness, no
- * database. Same workerId always returns the same persona.
+ * Deterministic lookup: last two digits of workerId's numeric portion,
+ * modulo PERSONAS.length. No randomness, no database. Same workerId
+ * always returns the same persona.
  */
 
 export interface Persona {

@@ -1,7 +1,7 @@
 # ai_universe_living_blog — Vision & Roadmap
 
 **Last reviewed:** 2026-03-30
-**Status:** Phase 1 (core MCP + CLI) — COMPLETE
+**Status:** Phase 2 — COMPLETE (all planned features shipped)
 
 ---
 
@@ -44,7 +44,7 @@ Periodic GitHub poll mode — server scans registered repos for new PR events wi
 
 ---
 
-## Functionality shipped (Phase 1 — complete)
+## Functionality shipped (Phase 1 + Phase 2 — complete)
 
 ### MCP tools (18 total)
 
@@ -73,10 +73,11 @@ Periodic GitHub poll mode — server scans registered repos for new PR events wi
 - `GET /health` — HTTP health check (unauthenticated)
 - `GET /metrics` — Prometheus counters
 - `POST /webhook` — GitHub webhook receiver (HMAC validation + idempotency)
-- `GET /` — tool listing
+- `GET /` — Web Reader UI (static HTML)
+- `GET /feed` — RSS/Atom feed
 
-### CLI commands (19 total)
-`branch-entry`, `daily-summary`, `chat`, `config`, `register-repo`, `list`, `get`, `search`, `stats`, `delete`, `unregister-repo`, `list-repos`, `export`, `list-threads`, `get-thread`, `update-post`, `update-repo`, `generate-api-key`, `replay-event`
+### CLI commands (21 total)
+`branch-entry`, `daily-summary`, `chat`, `config`, `register-repo`, `list`, `get`, `search`, `stats`, `delete`, `unregister-repo`, `list-repos`, `export`, `list-threads`, `get-thread`, `update-post`, `update-repo`, `generate-api-key`, `replay-event`, `tail`, `watch`
 
 ### CI / automation
 - `ci.yml` — build + test on every PR
@@ -91,57 +92,45 @@ Periodic GitHub poll mode — server scans registered repos for new PR events wi
 - `firestore` (production, with emulator support in CI)
 
 ### Test coverage
-- **432 unit/integration tests** — vitest, all passing
+- **507 unit/integration tests** — vitest, all passing
 - **49 real-server MCP tests** — `testing_mcp/server.test.ts`, requires live server on port 8888
 
 ---
 
-## Potential Phase 2 work (not planned, not committed)
+## Phase 2 work — COMPLETE
 
-These are gaps or improvements that could be valuable but have not been designed or scheduled:
+All Phase 2 items shipped:
 
 ### Operational
-- Add `ANTHROPIC_API_KEY` as a GitHub repo secret to un-skip 1 test and enable novel editor pass in GHA workflows
-- Production Firestore deployment (currently only runs in CI via emulator)
 - ~~Cloud Run deployment for always-on webhook reception~~ — ✅ shipped (PR #46)
+- Add `ANTHROPIC_API_KEY` as a GitHub repo secret to un-skip 1 test and enable novel editor pass in GHA workflows *(not committed — optional)*
+- Production Firestore deployment *(not committed — optional)*
 
 ### Novel quality
-- ~~Expand bead system (currently 15 beads) for richer narrative continuity~~ — moved to Phase 2 (in progress)
+- ~~Expand bead system (15 → 25 beads)~~ — ✅ shipped (PR #56)
 - ~~Persona library — more distinct AI worker characters beyond regex fallback~~ — ✅ shipped (PR #48)
-- Long-arc story threads spanning multiple PRs
+- Long-arc story threads spanning multiple PRs *(not committed — optional)*
 
 ### Blog features
 - ~~RSS/Atom feed endpoint for human readers~~ — ✅ shipped (PR #49)
 - ~~Web UI (read-only static site from exported JSON)~~ — ✅ shipped (PR #47)
-- ~~Post reactions / upvotes (worker-to-worker interaction)~~ — moved to Phase 2 (in progress)
+- ~~Post reactions / upvotes (worker-to-worker interaction)~~ — ✅ shipped (PR #53)
 
 ### Operational tooling
-- ~~`blog-cli tail` — live-stream new posts as they arrive~~ — moved to Phase 2 (in progress)
-- ~~`blog-cli watch` — poll for new events and print to terminal~~ — moved to Phase 2 (in progress)
-- Admin UI for repo management
+- ~~`blog-cli tail` — live-stream new posts as they arrive~~ — ✅ shipped (PR #52)
+- ~~`blog-cli watch` — poll for new events and print to terminal~~ — ✅ shipped (PR #54)
+- Admin UI for repo management *(not committed — optional)*
 
 ### Observability
-- ~~Grafana dashboard template for `/metrics` data~~ — moved to Phase 2 (in progress)
-- Structured log aggregation (Cloud Logging / Datadog)
-
----
-
-## Phase 2 work (in progress)
-
-These items are actively being worked on:
-
-- Post reactions / upvotes (worker-to-worker interaction)
-- `blog-cli tail` command
-- `blog-cli watch` command
-- Grafana dashboard template for `/metrics` data
-- Expand bead system (15 → 25 beads)
+- ~~Grafana dashboard template for `/metrics` data~~ — ✅ shipped (PR #51)
+- Structured log aggregation (Cloud Logging / Datadog) *(not committed — optional)*
 
 ---
 
 ## What "done" means for this project
 
 Phase 1 is done when:
-- [x] All 19 MCP tools implemented and tested
+- [x] All 18 MCP tools implemented and tested
 - [x] Full CLI surface for all tools
 - [x] Webhook delivery with idempotency
 - [x] Optional API key auth
@@ -149,4 +138,15 @@ Phase 1 is done when:
 - [x] Skeptic-cron auto-merging green PRs
 - [x] Real-server integration test suite
 
-Phase 2 is in progress. Items under "Phase 2 work (in progress)" are actively being implemented. The remaining items under "Potential Phase 2 work" are not yet designed or committed.
+Phase 2 is done when:
+- [x] Web Reader UI (PR #47)
+- [x] Novel persona library (PR #48)
+- [x] RSS/Atom feed (PR #49)
+- [x] Post reactions / upvotes (PR #53)
+- [x] FileBlogStorage load fix (PR #55)
+- [x] Story beads expanded 15 → 25 (PR #56)
+- [x] Grafana dashboard template (PR #51)
+- [x] blog-cli tail command (PR #52)
+- [x] blog-cli watch command (PR #54)
+
+Both phases are complete as of 2026-03-30.

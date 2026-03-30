@@ -75,6 +75,8 @@ export interface ParsedArgs {
   enabled?: boolean;
   // replay-event
   count?: number;
+  // watch
+  interval?: number;
   // env overrides
   blogServerUrl: string;
 }
@@ -127,7 +129,7 @@ export function parseArgs(argv: string[]): ParsedArgs {
   if (!command || command.startsWith('--')) {
     throw new Error(
       'Usage: blog-cli <command> [options]\n' +
-        'Commands: branch-entry, daily-summary, chat, config, register-repo, list, get, search, stats, delete, unregister-repo, list-repos, export, list-threads, get-thread, update-post',
+        'Commands: branch-entry, daily-summary, chat, config, register-repo, list, get, search, stats, delete, unregister-repo, list-repos, export, list-threads, get-thread, update-post, watch',
     );
   }
 
@@ -364,11 +366,19 @@ export function parseArgs(argv: string[]): ParsedArgs {
         blogServerUrl,
       };
     }
+    case 'watch': {
+      return {
+        command,
+        repo: raw['repo'] ? String(raw['repo']) : undefined,
+        interval: raw['interval'] ? parseInt(String(raw['interval']), 10) : undefined,
+        blogServerUrl,
+      };
+    }
     default:
       throw new Error(
         `Unknown command: "${command}"\n` +
           'Usage: blog-cli <command> [options]\n' +
-          'Commands: branch-entry, daily-summary, chat, config, register-repo, list, get, search, stats, delete, unregister-repo, list-repos, export, list-threads, get-thread, update-post, update-repo, generate-api-key, replay-event',
+          'Commands: branch-entry, daily-summary, chat, config, register-repo, list, get, search, stats, delete, unregister-repo, list-repos, export, list-threads, get-thread, update-post, update-repo, generate-api-key, replay-event, watch',
       );
   }
 }
@@ -1095,6 +1105,97 @@ export async function runReplayEventCommand(args: ParsedArgs): Promise<void> {
   console.log(JSON.stringify(result, null, 2));
 }
 
+// ─── watch command ─────────────────────────────────────────────────────────────
+
+/**
+ * Format a single post for the watch stream output.
+ * Format: [timestamp] [eventType] [repoKey] title
+ */
+export function formatPostLine(post: { createdAt: string; eventType: string; repoKey: string; title: string }): string {
+  const ts = post.createdAt ? post.createdAt.slice(0, 19).replace('T', ' ') : new Date().toISOString().slice(0, 19).replace('T', ' ');
+  return `[${ts}] [${post.eventType}] [${post.repoKey}] ${post.title}`;
+}
+
+interface ListPostsRpcResult {
+  posts: Array<{ id: string; createdAt: string; eventType: string; repoKey: string; title: string }>;
+  cursor?: string;
+}
+
+/**
+ * blog-cli watch [--repo owner/repo] [--interval N]
+ *
+ * Polls the MCP server for new posts and prints them in real time.
+ * - Uses client-side seen-IDs set to deduplicate across polls
+ * - Exponential backoff on connection errors (1s → 30s max)
+ * - SIGINT prints summary: "N new posts seen."
+ */
+export async function runWatchCommand(args: ParsedArgs): Promise<void> {
+  const intervalSecs = args.interval ?? 5;
+  const repoKey = args.repo;
+  const blogServerUrl = args.blogServerUrl;
+
+  // Track seen post IDs to avoid duplicates across polls
+  const seenIds = new Set<string>();
+  let newPostsSeen = 0;
+  let shutdown = false;
+  let retryDelayMs = 1000;
+  const MAX_BACKOFF_MS = 30_000;
+
+  // SIGINT handler — graceful shutdown
+  const handleSigInt = (): void => {
+    shutdown = true;
+  };
+  process.on('SIGINT', handleSigInt);
+
+  try {
+    while (!shutdown) {
+      // Build list_posts params
+      const params: Record<string, unknown> = {
+        limit: 100,
+      };
+      if (repoKey) params['repoKey'] = repoKey;
+
+      try {
+        const result = (await callMcpTool(blogServerUrl, 'list_posts', params)) as unknown as ListPostsRpcResult;
+        const { posts } = result;
+
+        // Filter to genuinely new posts (not yet seen)
+        const newPosts = posts.filter((p) => !seenIds.has(p.id));
+
+        // Print each new post
+        for (const post of newPosts) {
+          seenIds.add(post.id);
+          newPostsSeen++;
+          console.log(formatPostLine(post));
+        }
+
+        // Reset backoff on successful poll
+        retryDelayMs = 1000;
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        console.warn(`Warning: could not reach server — ${msg}. Retrying in ${retryDelayMs / 1000}s...`);
+
+        // Exponential backoff, capped at 30s
+        await sleep(retryDelayMs);
+        retryDelayMs = Math.min(retryDelayMs * 2, MAX_BACKOFF_MS);
+        // Don't count this wait toward the interval — retry immediately
+        continue;
+      }
+
+      // Wait for the polling interval
+      await sleep(intervalSecs * 1000);
+    }
+  } finally {
+    process.removeListener('SIGINT', handleSigInt);
+  }
+
+  console.log(`${newPostsSeen} new post${newPostsSeen !== 1 ? 's' : ''} seen.`);
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
 export async function main(argv = process.argv.slice(2)): Promise<void> {
@@ -1164,6 +1265,9 @@ export async function main(argv = process.argv.slice(2)): Promise<void> {
         break;
       case 'replay-event':
         await runReplayEventCommand(parsed);
+        break;
+      case 'watch':
+        await runWatchCommand(parsed);
         break;
     }
   } catch (err) {

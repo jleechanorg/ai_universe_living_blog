@@ -225,11 +225,11 @@ describe('runWatchCommand', () => {
       command: 'watch',
       repo: 'owner/watch-repo',
       blogServerUrl: 'http://localhost:9999',
-      interval: 50, // 50ms between polls
+      interval: 0.05, // 0.05 seconds (50 ms) between polls
     };
 
-    // Run for ~60ms — enough to complete one poll cycle
-    const timeout = new Promise<void>((resolve) => setTimeout(resolve, 60));
+    // Run for ~150ms — enough to complete at least one poll cycle
+    const timeout = new Promise<void>((resolve) => setTimeout(resolve, 150));
     const run = runWatchCommand(args);
     await Promise.race([run.then(() => {}), timeout]);
 

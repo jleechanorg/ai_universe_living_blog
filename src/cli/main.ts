@@ -75,6 +75,8 @@ export interface ParsedArgs {
   enabled?: boolean;
   // replay-event
   count?: number;
+  // watch
+  interval?: number;
   // env overrides
   blogServerUrl: string;
 }
@@ -127,7 +129,7 @@ export function parseArgs(argv: string[]): ParsedArgs {
   if (!command || command.startsWith('--')) {
     throw new Error(
       'Usage: blog-cli <command> [options]\n' +
-        'Commands: branch-entry, daily-summary, chat, config, register-repo, list, get, search, stats, delete, unregister-repo, list-repos, export, list-threads, get-thread, update-post',
+        'Commands: branch-entry, daily-summary, chat, config, register-repo, list, get, search, stats, delete, unregister-repo, list-repos, export, list-threads, get-thread, update-post, watch',
     );
   }
 
@@ -364,11 +366,31 @@ export function parseArgs(argv: string[]): ParsedArgs {
         blogServerUrl,
       };
     }
+    case 'watch': {
+      let interval: number | undefined;
+      const intervalRaw = raw['interval'];
+      if (intervalRaw !== undefined) {
+        if (intervalRaw === true) {
+          throw new Error('watch requires --interval <positive integer seconds>');
+        }
+        const parsed = parseInt(String(intervalRaw), 10);
+        if (!Number.isInteger(parsed) || parsed <= 0) {
+          throw new Error('watch requires --interval <positive integer seconds>');
+        }
+        interval = parsed;
+      }
+      return {
+        command,
+        repo: raw['repo'] ? String(raw['repo']) : undefined,
+        interval,
+        blogServerUrl,
+      };
+    }
     default:
       throw new Error(
         `Unknown command: "${command}"\n` +
           'Usage: blog-cli <command> [options]\n' +
-          'Commands: branch-entry, daily-summary, chat, config, register-repo, list, get, search, stats, delete, unregister-repo, list-repos, export, list-threads, get-thread, update-post, update-repo, generate-api-key, replay-event',
+          'Commands: branch-entry, daily-summary, chat, config, register-repo, list, get, search, stats, delete, unregister-repo, list-repos, export, list-threads, get-thread, update-post, update-repo, generate-api-key, replay-event, watch',
       );
   }
 }
@@ -760,18 +782,48 @@ export async function runRegisterRepoCommand(args: ParsedArgs): Promise<void> {
 
 // ─── H.1 list command ──────────────────────────────────────────────────────
 
+/**
+ * Error class for transient failures (network errors, 5xx, 429).
+ * Permanent errors (4xx, JSON-RPC application errors) are plain Error.
+ */
+export class McpTransientError extends Error {
+  constructor(
+    message: string,
+    public readonly status?: number,
+  ) {
+    super(message);
+    this.name = 'McpTransientError';
+  }
+}
+
 async function callMcpTool(
   blogServerUrl: string,
   toolName: string,
   params: Record<string, unknown>,
+  abortSignal?: AbortSignal,
 ): Promise<Record<string, unknown>> {
   const url = `${blogServerUrl}/mcp`;
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: toolName, params }),
-  });
-  if (!res.ok) throw new Error(`MCP server returned ${res.status}: ${await res.text()}`);
+  let res: Response;
+  try {
+    res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: toolName, params }),
+      signal: abortSignal,
+    });
+  } catch (err) {
+    // Network failures (DNS, ECONNREFUSED, timeout, abort) are transient
+    throw new McpTransientError(`Network error: ${err instanceof Error ? err.message : String(err)}`);
+  }
+  if (!res.ok) {
+    const text = await res.text();
+    // 5xx and 429 are transient — retry with backoff
+    if (res.status >= 500 || res.status === 429) {
+      throw new McpTransientError(`MCP server returned ${res.status}: ${text}`, res.status);
+    }
+    // 4xx is permanent — fail fast
+    throw new Error(`MCP server returned ${res.status}: ${text}`);
+  }
   const data = (await res.json()) as Record<string, unknown>;
   const result = data.result as Record<string, unknown> | undefined;
   const content = result?.content as Array<Record<string, unknown>> | undefined;
@@ -779,6 +831,7 @@ async function callMcpTool(
   if (!text) throw new Error(`MCP tool ${toolName} returned no content`);
   const parsed = JSON.parse(text) as Record<string, unknown>;
   if (result?.isError || parsed.error) {
+    // JSON-RPC application error is permanent — fail fast
     throw new Error(String(parsed.error ?? 'MCP tool returned error'));
   }
   return parsed;
@@ -1095,6 +1148,157 @@ export async function runReplayEventCommand(args: ParsedArgs): Promise<void> {
   console.log(JSON.stringify(result, null, 2));
 }
 
+// ─── watch command ─────────────────────────────────────────────────────────────
+
+/**
+ * Format a single post for the watch stream output.
+ * Format: [timestamp] [eventType] [repoKey] title
+ */
+export function formatPostLine(post: { createdAt: string; eventType: string; repoKey: string; title: string }): string {
+  const ts = post.createdAt ? post.createdAt.slice(0, 19).replace('T', ' ') : new Date().toISOString().slice(0, 19).replace('T', ' ');
+  return `[${ts}] [${post.eventType}] [${post.repoKey}] ${post.title}`;
+}
+
+interface ListPostsRpcResult {
+  posts: Array<{ id: string; createdAt: string; eventType: string; repoKey: string; title: string }>;
+  cursor?: string;
+}
+
+/**
+ * Detect which posts in a batch are new (not yet in seenIds).
+ * Callers should add returned post IDs to their seenIds set.
+ */
+export function detectNewPosts<T extends { id: string }>(
+  seenIds: ReadonlySet<string>,
+  posts: T[],
+): T[] {
+  return posts.filter((p) => !seenIds.has(p.id));
+}
+
+/**
+ * Compute the next backoff delay after a poll attempt.
+ * On failure: doubles the delay, capped at MAX_BACKOFF_MS.
+ * On success: resets to BASE_BACKOFF_MS.
+ */
+export const BASE_BACKOFF_MS = 1_000;
+export const MAX_BACKOFF_MS = 30_000;
+
+export function computeBackoff(
+  currentDelayMs: number,
+  succeeded: boolean,
+): number {
+  if (succeeded) return BASE_BACKOFF_MS;
+  return Math.min(currentDelayMs * 2, MAX_BACKOFF_MS);
+}
+
+/**
+ * Fetch all posts for a repoKey by paging through all list_posts results.
+ * Returns all posts accumulated across pages, up to MAX_FETCH posts.
+ */
+async function fetchAllPosts(
+  blogServerUrl: string,
+  repoKey?: string,
+  abortSignal?: AbortSignal,
+): Promise<Array<{ id: string; createdAt: string; eventType: string; repoKey: string; title: string }>> {
+  const allPosts: Array<{ id: string; createdAt: string; eventType: string; repoKey: string; title: string }> = [];
+  let cursor: string | undefined;
+  const MAX_FETCH = 10_000;
+
+  do {
+    const params: Record<string, unknown> = { limit: 100 };
+    if (repoKey) params['repoKey'] = repoKey;
+    if (cursor) params['cursor'] = cursor;
+
+    const result = (await callMcpTool(blogServerUrl, 'list_posts', params, abortSignal)) as unknown as ListPostsRpcResult;
+    allPosts.push(...result.posts);
+    cursor = result.cursor;
+  } while (cursor && allPosts.length < MAX_FETCH);
+
+  return allPosts;
+}
+
+/**
+ * blog-cli watch [--repo owner/repo] [--interval N]
+ *
+ * Polls the MCP server for new posts and prints them in real time.
+ * - Paginates through ALL posts on each poll to handle bursts >100 posts
+ * - Uses client-side seen-IDs set to deduplicate across polls
+ * - Exponential backoff on transient errors only (network, 5xx, 429)
+ * - SIGINT aborts promptly via AbortController — prints summary immediately
+ */
+export async function runWatchCommand(args: ParsedArgs): Promise<void> {
+  const intervalSecs = args.interval ?? 5;
+  const repoKey = args.repo;
+  const blogServerUrl = args.blogServerUrl;
+
+  const seenIds = new Set<string>();
+  let newPostsSeen = 0;
+  let shutdown = false;
+  let retryDelayMs = BASE_BACKOFF_MS;
+  const controller = new AbortController();
+
+  // SIGINT handler — abort in-flight requests and signal shutdown
+  const handleSigInt = (): void => {
+    shutdown = true;
+    controller.abort();
+  };
+  process.on('SIGINT', handleSigInt);
+
+  try {
+    while (!shutdown) {
+      try {
+        const posts = await fetchAllPosts(blogServerUrl, repoKey, controller.signal);
+
+        const newPosts = detectNewPosts(seenIds, posts);
+        for (const post of newPosts) {
+          seenIds.add(post.id);
+          newPostsSeen++;
+          console.log(formatPostLine(post));
+        }
+
+        retryDelayMs = computeBackoff(retryDelayMs, true);
+      } catch (err) {
+        // SIGINT abort: exit immediately, don't retry or wait
+        if (err instanceof Error && err.name === 'AbortError') break;
+
+        // Permanent error (4xx, JSON-RPC error): exit with summary
+        if (!(err instanceof McpTransientError)) {
+          console.error(`Error: ${err instanceof Error ? err.message : String(err)}`);
+          break;
+        }
+
+        // Transient error: backoff and retry promptly
+        console.warn(`Warning: could not reach server — ${err.message}. Retrying in ${retryDelayMs / 1000}s...`);
+        await sleepWithAbort(retryDelayMs, controller.signal);
+        retryDelayMs = computeBackoff(retryDelayMs, false);
+        continue;
+      }
+
+      await sleepWithAbort(intervalSecs * 1000, controller.signal);
+    }
+  } finally {
+    process.removeListener('SIGINT', handleSigInt);
+  }
+
+  console.log(`${newPostsSeen} new post${newPostsSeen !== 1 ? 's' : ''} seen.`);
+}
+
+/**
+ * Like sleep() but rejects immediately if the signal is already aborted,
+ * or aborts early if it becomes aborted during the wait.
+ */
+function sleepWithAbort(ms: number, signal?: AbortSignal): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (signal?.aborted) { reject(new DOMException('aborted', 'AbortError')); return; }
+    const timer = setTimeout(resolve, ms);
+    signal?.addEventListener('abort', () => { clearTimeout(timer); reject(new DOMException('aborted', 'AbortError')); }, { once: true });
+  });
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
 export async function main(argv = process.argv.slice(2)): Promise<void> {
@@ -1164,6 +1368,9 @@ export async function main(argv = process.argv.slice(2)): Promise<void> {
         break;
       case 'replay-event':
         await runReplayEventCommand(parsed);
+        break;
+      case 'watch':
+        await runWatchCommand(parsed);
         break;
     }
   } catch (err) {

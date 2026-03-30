@@ -57,11 +57,22 @@ describe('beads.ts', () => {
     expect(beads).toContain('bd-c8y');
   });
 
-  it('pickDailySummaryBeads returns more beads for later days', () => {
+  it('pickDailySummaryBeads returns 3 beads per day via rotation', () => {
+    const d1 = pickDailySummaryBeads(1);
+    const d2 = pickDailySummaryBeads(2);
     const d3 = pickDailySummaryBeads(3);
-    const d5 = pickDailySummaryBeads(5);
-    expect(d5.length).toBeGreaterThanOrEqual(d3.length);
-    expect(d3).toContain('bd-85r');
+    // Each day returns exactly 3 beads
+    expect(d1).toHaveLength(3);
+    expect(d2).toHaveLength(3);
+    expect(d3).toHaveLength(3);
+    // Different days return different slices (rotation — not the same set)
+    expect(d1).not.toEqual(d2);
+    expect(d2).not.toEqual(d3);
+    // All returned bead IDs exist in KNOWN_BEADS
+    const allBeads = getAllBeads().map((b) => b.id);
+    for (const id of [...d1, ...d2, ...d3]) {
+      expect(allBeads).toContain(id);
+    }
   });
 
   it('renderBeadTrackerTable renders markdown table', () => {

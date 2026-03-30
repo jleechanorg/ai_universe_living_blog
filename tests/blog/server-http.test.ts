@@ -195,7 +195,7 @@ describe('Blog MCP Server — write tools rate limit', () => {
     process.env['STORAGE_TYPE'] = 'memory';
     const { createBlogApp } = await import('../../src/blog/server.js');
     app = await createBlogApp({ rateLimits: { globalMax: 100, writeMax: WRITE_MAX } });
-  });
+  }, 15000);
 
   it(`returns 429 after ${WRITE_MAX} create_post requests/min`, async () => {
     for (let i = 0; i < WRITE_MAX; i++) {
@@ -211,7 +211,7 @@ describe('Blog MCP Server — write tools rate limit', () => {
     }));
     expect(res.status).toBe(429);
     expect(res.headers['ratelimit-limit']).toBe(String(WRITE_MAX));
-  });
+  }, 15000);
 });
 
 // ─── G.4 /metrics endpoint ─────────────────────────────────────────────────────

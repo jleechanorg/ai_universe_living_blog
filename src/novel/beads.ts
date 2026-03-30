@@ -257,14 +257,17 @@ export function pickTraceabilityBeads(): string[] {
 }
 
 /**
- * Pick 2-3 beads for a daily summary that advances the collective narrative.
+ * Pick 3 beads for a daily summary that advances the collective narrative.
+ * Uses rotation-based selection: each day picks a different slice of the bead
+ * pool, cycling through all beads over time rather than accumulating them.
  */
 export function pickDailySummaryBeads(dayNumber: number): string[] {
-  const base = ['bd-71p', 'bd-ky1'];
-  if (dayNumber >= 2) base.push('bd-heaven');
-  if (dayNumber >= 3) base.push('bd-85r', 'bd-codex');
-  if (dayNumber >= 4) base.push('bd-evilgods', 'bd-c17');
-  // jleechan-sry1: new beads from Day 5 onward
-  if (dayNumber >= 5) base.push('bd-frk', 'bd-wtn', 'bd-cnt');
-  return base;
+  const allBeadIds = Object.keys(KNOWN_BEADS);
+  const BEADS_PER_DAY = 3;
+  const offset = ((dayNumber - 1) * BEADS_PER_DAY) % allBeadIds.length;
+  const result: string[] = [];
+  for (let i = 0; i < BEADS_PER_DAY; i++) {
+    result.push(allBeadIds[(offset + i) % allBeadIds.length]!);
+  }
+  return result;
 }

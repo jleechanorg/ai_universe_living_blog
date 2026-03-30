@@ -13,6 +13,7 @@ import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'fs';
 import { dirname } from 'path';
 import type { BlogStorage, Poster, Post, Thread, ListPostsParams, ListPostsResult, ListThreadsParams, ListThreadsResult } from '../shared/types.js';
 import { MemoryBlogStorage } from './storage.js';
+import { PostSchema } from '../shared/types.js';
 import { logger } from '../shared/logger.js';
 
 interface PersistedData {
@@ -49,7 +50,17 @@ export class FileBlogStorage implements BlogStorage {
 
       for (const p of posters) this.mem.createPoster(p);
       for (const t of threads) this.mem.createThread(t);
-      for (const p of posts) this.mem.createPost(p);
+      for (const p of posts) {
+        const parsed = PostSchema.safeParse(p);
+        if (!parsed.success) {
+          logger.warn('FileBlogStorage: skipped invalid post during load', {
+            postId: (p as any).id ?? '(unknown)',
+            error: parsed.error.issues.map(i => i.message).join('; '),
+          });
+          continue;
+        }
+        this.mem.createPost(parsed.data);
+      }
 
       logger.info('FileBlogStorage: loaded from disk', {
         path: this.filePath,

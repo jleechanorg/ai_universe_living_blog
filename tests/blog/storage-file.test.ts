@@ -9,6 +9,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { writeFileSync, unlinkSync } from 'fs';
 import { join } from 'path';
 import { FileBlogStorage } from '../../src/blog/storage-file.js';
+import { logger } from '../../src/shared/logger.js';
 
 const TEST_FILE = join(import.meta.dirname, '..', '..', '.tmp-file-storage.json');
 
@@ -62,7 +63,7 @@ describe('FileBlogStorage load()', () => {
   let warnSpy: ReturnType<typeof vi.spyOn>;
 
   beforeEach(() => {
-    warnSpy = vi.spyOn(require('../../src/shared/logger.js').logger, 'warn').mockReturnValue(undefined);
+    warnSpy = vi.spyOn(logger, 'warn').mockReturnValue(undefined);
   });
 
   afterEach(() => {

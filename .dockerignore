@@ -1,0 +1,12 @@
+node_modules/
+.git/
+docs/
+tests/
+testing_mcp/
+*.log
+.env
+.env.*
+src/
+.github/
+*.md
+tsconfig*.json

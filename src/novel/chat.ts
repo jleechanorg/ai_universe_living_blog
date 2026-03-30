@@ -10,6 +10,7 @@ import { existsSync, openSync, writeSync, closeSync, readSync, constants } from 
 import { join } from 'node:path';
 import { homedir } from 'node:os';
 import { v4 as uuidv4 } from 'uuid';
+import { getPersona } from './personas.js';
 import type { BlogStorage } from '../shared/types.js';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -254,15 +255,19 @@ export class WorkerChat {
     }
 
     const { tone, summary } = extractVoice(entry.content);
+    const persona = getPersona(workerId);
 
     const systemPrompt = `You are ${workerId}, a fictional AI worker character from The Daily Lives of Workers.
-Respond in the worker's established voice — direct, honest, wry, with moments of tenderness.
-Do not break character. Do not explain that you are an AI.
-Worker context: ${summary}
+Your archetype: ${persona.name}. Role: ${persona.role}.
+${persona.systemPromptSnippet}
+Respond in this worker's established voice.
+Worker context from voice analysis: ${summary}
 Excerpt from the worker's own writing:
 ---
 ${entry.content.slice(0, 500)}
----`;
+---
+Persona voice examples to inform your tone:
+${persona.voiceSamples.map((s) => `  — "${s}"`).join('\n')}`;
 
     let response: string;
     try {

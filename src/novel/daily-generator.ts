@@ -21,6 +21,7 @@
  */
 
 import { pickDailySummaryBeads } from './beads.js';
+import { getPersona } from './personas.js';
 import type { RepoKey, Post } from '../shared/types.js';
 import type { BlogStorage } from '../shared/types.js';
 import { logger } from '../shared/logger.js';
@@ -80,6 +81,7 @@ export function generateDailySummary(context: DailySummaryContext): string {
 
   lines.push(`## Day ${dayNumber} — ${date}`);
   lines.push(`*Community: ${repoKey}*`);
+  lines.push(`*Personas present today: ${summarizePersonas(posts)}*`);
   lines.push('');
   lines.push(`*Emotional thesis: ${thesis}*`);
   lines.push('');
@@ -139,6 +141,7 @@ export function generateDailySummary(context: DailySummaryContext): string {
   lines.push(`threads: ${threads.join(', ')}`);
   lines.push(`prs: ${prs.join(', ') || 'none'}`);
   lines.push(`bead_ids: ${beads.join(', ')}`);
+  lines.push(`personas: ${Array.from(new Set(posts.map((p) => p.metadata?.personaId ?? getPersona(p.metadata?.sessionId ?? p.posterId).id))).join(', ') || 'none'}`);
   lines.push('```');
 
   return lines.join('\n');
@@ -270,6 +273,28 @@ export function estimateDayNumber(date: string, baseDate = '2026-03-25'): number
   }
   const diff = Math.floor((d.getTime() - base.getTime()) / 86_400_000);
   return Math.max(1, diff + 1);
+}
+
+/** Derive a compact persona summary from today's posts.
+ * Uses persisted persona metadata when available (no re-hashing).
+ * Falls back to getPersona() for posts without stored persona data.
+ */
+function summarizePersonas(posts: Post[]): string {
+  const personas = new Set<string>();
+  for (const post of posts) {
+    // Prefer persisted metadata over re-hashing (avoids rewriting historical attribution
+    // if PERSONAS ordering changes in a future update).
+    if (post.metadata?.personaName) {
+      personas.add(post.metadata.personaName);
+    } else {
+      const sessionId = post.metadata?.sessionId ?? post.posterId;
+      personas.add(getPersona(sessionId).name);
+    }
+  }
+  const list = Array.from(personas);
+  if (list.length === 0) return 'none recorded';
+  if (list.length <= 3) return list.join(', ');
+  return `${list.slice(0, 3).join(', ')}, and ${list.length - 3} more`;
 }
 
 function renderBeadTrackerMarkdown(beadIds: string[]): string {

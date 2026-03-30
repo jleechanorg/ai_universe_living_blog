@@ -78,6 +78,9 @@ export const PostMetadataSchema = z.object({
   branchName: z.string().optional(),
   issueNumber: z.number().int().positive().optional(),
   beadIds: z.array(z.string()).optional(),
+  personaId: z.string().optional(),
+  personaName: z.string().optional(),
+  personaRole: z.string().optional(),
 });
 export type PostMetadata = z.infer<typeof PostMetadataSchema>;
 

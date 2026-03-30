@@ -4,21 +4,13 @@
 
 ### 1. Import the dashboard
 
-In Grafana (UI or `grafana-cli`):
+Via the Grafana UI: **Dashboards → New → Import** → upload `blog-mcp-dashboard.json`.
 
-```bash
-grafana-cli dashboards import docs/grafana/blog-mcp-dashboard.json
-```
-
-Or via the UI: **Dashboards → New → Import** → upload `blog-mcp-dashboard.json`.
+The dashboard includes a top-level `__inputs` declaration for the Prometheus datasource. Grafana will prompt you to select or create a Prometheus datasource during import and automatically substitute `${DS_PROMETHEUS}` throughout all panels.
 
 ### 2. Configure the Prometheus datasource
 
-The dashboard uses `__DS_PROMETHEUS__` as the datasource UID placeholder. After importing:
-
-1. Navigate to **Dashboards → Manage → Blog MCP Server → Settings → Variables**
-2. Or create a dashboard variable: `__DS_PROMETHEUS__` → select your Prometheus datasource.
-3. Alternatively, use Grafana's **Replace variable** feature (Grafana 10+) to substitute `__DS_PROMETHEUS__` with your actual Prometheus datasource UID before import.
+The dashboard uses Grafana's standard `__inputs` datasource variable pattern (`${DS_PROMETHEUS}`). After importing, Grafana will have already mapped the datasource — no additional variable configuration is needed.
 
 ### 3. Scrape target
 
@@ -28,11 +20,11 @@ Add this to your Prometheus `scrape_configs`:
 scrape_configs:
   - job_name: blog-mcp-server
     static_configs:
-      - targets: ["localhost:8081"]
+      - targets: ["localhost:8888"]
     metrics_path: /metrics
 ```
 
-> **Note:** The default `PORT` is `8081`. If your server runs on a different port, update the target accordingly. See `docs/CONFIGURATION.md` for all environment variables.
+> **Note:** The default `PORT` is `8888`. If your server runs on a different port, update the target accordingly. See `docs/CONFIGURATION.md` for all environment variables.
 
 ---
 

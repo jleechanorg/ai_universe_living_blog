@@ -782,18 +782,48 @@ export async function runRegisterRepoCommand(args: ParsedArgs): Promise<void> {
 
 // ─── H.1 list command ──────────────────────────────────────────────────────
 
+/**
+ * Error class for transient failures (network errors, 5xx, 429).
+ * Permanent errors (4xx, JSON-RPC application errors) are plain Error.
+ */
+export class McpTransientError extends Error {
+  constructor(
+    message: string,
+    public readonly status?: number,
+  ) {
+    super(message);
+    this.name = 'McpTransientError';
+  }
+}
+
 async function callMcpTool(
   blogServerUrl: string,
   toolName: string,
   params: Record<string, unknown>,
+  abortSignal?: AbortSignal,
 ): Promise<Record<string, unknown>> {
   const url = `${blogServerUrl}/mcp`;
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: toolName, params }),
-  });
-  if (!res.ok) throw new Error(`MCP server returned ${res.status}: ${await res.text()}`);
+  let res: Response;
+  try {
+    res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: toolName, params }),
+      signal: abortSignal,
+    });
+  } catch (err) {
+    // Network failures (DNS, ECONNREFUSED, timeout, abort) are transient
+    throw new McpTransientError(`Network error: ${err instanceof Error ? err.message : String(err)}`);
+  }
+  if (!res.ok) {
+    const text = await res.text();
+    // 5xx and 429 are transient — retry with backoff
+    if (res.status >= 500 || res.status === 429) {
+      throw new McpTransientError(`MCP server returned ${res.status}: ${text}`, res.status);
+    }
+    // 4xx is permanent — fail fast
+    throw new Error(`MCP server returned ${res.status}: ${text}`);
+  }
   const data = (await res.json()) as Record<string, unknown>;
   const result = data.result as Record<string, unknown> | undefined;
   const content = result?.content as Array<Record<string, unknown>> | undefined;
@@ -801,6 +831,7 @@ async function callMcpTool(
   if (!text) throw new Error(`MCP tool ${toolName} returned no content`);
   const parsed = JSON.parse(text) as Record<string, unknown>;
   if (result?.isError || parsed.error) {
+    // JSON-RPC application error is permanent — fail fast
     throw new Error(String(parsed.error ?? 'MCP tool returned error'));
   }
   return parsed;
@@ -1167,6 +1198,7 @@ export function computeBackoff(
 async function fetchAllPosts(
   blogServerUrl: string,
   repoKey?: string,
+  abortSignal?: AbortSignal,
 ): Promise<Array<{ id: string; createdAt: string; eventType: string; repoKey: string; title: string }>> {
   const allPosts: Array<{ id: string; createdAt: string; eventType: string; repoKey: string; title: string }> = [];
   let cursor: string | undefined;
@@ -1177,7 +1209,7 @@ async function fetchAllPosts(
     if (repoKey) params['repoKey'] = repoKey;
     if (cursor) params['cursor'] = cursor;
 
-    const result = (await callMcpTool(blogServerUrl, 'list_posts', params)) as unknown as ListPostsRpcResult;
+    const result = (await callMcpTool(blogServerUrl, 'list_posts', params, abortSignal)) as unknown as ListPostsRpcResult;
     allPosts.push(...result.posts);
     cursor = result.cursor;
   } while (cursor && allPosts.length < MAX_FETCH);
@@ -1191,63 +1223,76 @@ async function fetchAllPosts(
  * Polls the MCP server for new posts and prints them in real time.
  * - Paginates through ALL posts on each poll to handle bursts >100 posts
  * - Uses client-side seen-IDs set to deduplicate across polls
- * - Exponential backoff on connection errors (1s → 30s max)
- * - SIGINT prints summary: "N new posts seen."
+ * - Exponential backoff on transient errors only (network, 5xx, 429)
+ * - SIGINT aborts promptly via AbortController — prints summary immediately
  */
 export async function runWatchCommand(args: ParsedArgs): Promise<void> {
   const intervalSecs = args.interval ?? 5;
   const repoKey = args.repo;
   const blogServerUrl = args.blogServerUrl;
 
-  // Track seen post IDs to avoid duplicates across polls
   const seenIds = new Set<string>();
   let newPostsSeen = 0;
   let shutdown = false;
   let retryDelayMs = BASE_BACKOFF_MS;
+  const controller = new AbortController();
 
-  // SIGINT handler — graceful shutdown
+  // SIGINT handler — abort in-flight requests and signal shutdown
   const handleSigInt = (): void => {
     shutdown = true;
+    controller.abort();
   };
   process.on('SIGINT', handleSigInt);
 
   try {
     while (!shutdown) {
       try {
-        // Fetch ALL posts (paginate through all pages) to handle bursts
-        const posts = await fetchAllPosts(blogServerUrl, repoKey);
+        const posts = await fetchAllPosts(blogServerUrl, repoKey, controller.signal);
 
-        // Filter to genuinely new posts (not yet seen)
         const newPosts = detectNewPosts(seenIds, posts);
-
-        // Print each new post
         for (const post of newPosts) {
           seenIds.add(post.id);
           newPostsSeen++;
           console.log(formatPostLine(post));
         }
 
-        // Reset backoff on successful poll
         retryDelayMs = computeBackoff(retryDelayMs, true);
       } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err);
-        console.warn(`Warning: could not reach server — ${msg}. Retrying in ${retryDelayMs / 1000}s...`);
+        // SIGINT abort: exit immediately, don't retry or wait
+        if (err instanceof Error && err.name === 'AbortError') break;
 
-        // Exponential backoff, capped at 30s
-        await sleep(retryDelayMs);
+        // Permanent error (4xx, JSON-RPC error): exit with summary
+        if (!(err instanceof McpTransientError)) {
+          console.error(`Error: ${err instanceof Error ? err.message : String(err)}`);
+          break;
+        }
+
+        // Transient error: backoff and retry promptly
+        console.warn(`Warning: could not reach server — ${err.message}. Retrying in ${retryDelayMs / 1000}s...`);
+        await sleepWithAbort(retryDelayMs, controller.signal);
         retryDelayMs = computeBackoff(retryDelayMs, false);
-        // Don't count this wait toward the interval — retry immediately
         continue;
       }
 
-      // Wait for the polling interval
-      await sleep(intervalSecs * 1000);
+      await sleepWithAbort(intervalSecs * 1000, controller.signal);
     }
   } finally {
     process.removeListener('SIGINT', handleSigInt);
   }
 
   console.log(`${newPostsSeen} new post${newPostsSeen !== 1 ? 's' : ''} seen.`);
+}
+
+/**
+ * Like sleep() but rejects immediately if the signal is already aborted,
+ * or aborts early if it becomes aborted during the wait.
+ */
+function sleepWithAbort(ms: number, signal?: AbortSignal): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (signal?.aborted) { reject(new DOMException('aborted', 'AbortError')); return; }
+    const timer = setTimeout(resolve, ms);
+    signal?.addEventListener('abort', () => { clearTimeout(timer); reject(new DOMException('aborted', 'AbortError')); }, { once: true });
+  });
 }
 
 function sleep(ms: number): Promise<void> {

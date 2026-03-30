@@ -135,8 +135,16 @@ describe('formatPostLine', () => {
 // ─── runWatchCommand ──────────────────────────────────────────────────────────
 
 describe('runWatchCommand', () => {
-  // Use a server that nothing is listening on so calls fail predictably
-  const NO_SERVER_URL = 'http://127.0.0.1:1';
+  // Shared spy handles — restored in afterEach even if a test throws.
+  let fetchSpy: ReturnType<typeof vi.spyOn> | undefined;
+  let consoleLogSpy: ReturnType<typeof vi.spyOn> | undefined;
+
+  afterEach(() => {
+    fetchSpy?.mockRestore();
+    consoleLogSpy?.mockRestore();
+    fetchSpy = undefined;
+    consoleLogSpy = undefined;
+  });
 
   it('runWatchCommand is exported and callable', async () => {
     const { runWatchCommand } = await import('../../src/cli/main.js');
@@ -172,6 +180,65 @@ describe('runWatchCommand', () => {
     // watch is valid and accepts arbitrary flags silently
     const args = parseArgsRaw(['watch', '--unknown-flag']);
     expect(args.command).toBe('watch');
+  });
+
+  it('polls MCP server via runWatchCommand and prints new posts', async () => {
+    const { runWatchCommand } = await import('../../src/cli/main.js');
+
+    const post = {
+      id: 'dddd0000-0000-0000-0000-000000000004',
+      createdAt: '2026-03-29T15:00:00.000Z',
+      eventType: 'pr_merged',
+      repoKey: 'owner/watch-repo',
+      title: 'Watch test post',
+    };
+
+    let callCount = 0;
+    fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation(async (url) => {
+      const input = typeof url === 'string' ? url : url instanceof URL ? url.href : String(url);
+      if (input.includes('/mcp')) {
+        callCount++;
+        return new Response(
+          JSON.stringify({
+            jsonrpc: '2.0',
+            id: 1,
+            result: {
+              content: [
+                {
+                  text: JSON.stringify({
+                    posts: callCount === 1 ? [post] : [],
+                    nextCursor: undefined,
+                  }),
+                },
+              ],
+            },
+          }),
+          { status: 200 },
+        );
+      }
+      throw new Error('unexpected URL');
+    });
+
+    consoleLogSpy = vi.spyOn(console, 'log').mockReturnValue();
+
+    const args: ParsedArgs = {
+      command: 'watch',
+      repo: 'owner/watch-repo',
+      blogServerUrl: 'http://localhost:9999',
+      interval: 50, // 50ms between polls
+    };
+
+    // Run for ~60ms — enough to complete one poll cycle
+    const timeout = new Promise<void>((resolve) => setTimeout(resolve, 60));
+    const run = runWatchCommand(args);
+    await Promise.race([run.then(() => {}), timeout]);
+
+    // At least one MCP call was made
+    expect(callCount).toBeGreaterThanOrEqual(1);
+    // The post was printed via console.log
+    expect(consoleLogSpy).toHaveBeenCalledWith(
+      expect.stringContaining('Watch test post'),
+    );
   });
 });
 

@@ -74,6 +74,23 @@ describe('blog-cli watch parseArgs', () => {
     const args = parseArgsRaw(['watch', '--interval=3']);
     expect(args.interval).toBe(3);
   });
+
+  it('watch --interval 0 throws', () => {
+    expect(() => parseArgsRaw(['watch', '--interval', '0'])).toThrow('positive integer seconds');
+  });
+
+  it('watch --interval negative throws', () => {
+    expect(() => parseArgsRaw(['watch', '--interval', '-5'])).toThrow('positive integer seconds');
+  });
+
+  it('watch --interval non-numeric throws', () => {
+    expect(() => parseArgsRaw(['watch', '--interval', 'abc'])).toThrow('positive integer seconds');
+  });
+
+  it('watch --interval with no value throws', () => {
+    // --interval with no following value sets it to boolean `true` in parseKvArgs
+    expect(() => parseArgsRaw(['watch', '--interval'])).toThrow('positive integer seconds');
+  });
 });
 
 // ─── formatPostLine ──────────────────────────────────────────────────────────

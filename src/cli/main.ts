@@ -367,10 +367,22 @@ export function parseArgs(argv: string[]): ParsedArgs {
       };
     }
     case 'watch': {
+      let interval: number | undefined;
+      const intervalRaw = raw['interval'];
+      if (intervalRaw !== undefined) {
+        if (intervalRaw === true) {
+          throw new Error('watch requires --interval <positive integer seconds>');
+        }
+        const parsed = parseInt(String(intervalRaw), 10);
+        if (!Number.isInteger(parsed) || parsed <= 0) {
+          throw new Error('watch requires --interval <positive integer seconds>');
+        }
+        interval = parsed;
+      }
       return {
         command,
         repo: raw['repo'] ? String(raw['repo']) : undefined,
-        interval: raw['interval'] ? parseInt(String(raw['interval']), 10) : undefined,
+        interval,
         blogServerUrl,
       };
     }
@@ -1118,7 +1130,7 @@ export function formatPostLine(post: { createdAt: string; eventType: string; rep
 
 interface ListPostsRpcResult {
   posts: Array<{ id: string; createdAt: string; eventType: string; repoKey: string; title: string }>;
-  cursor?: string;
+  nextCursor?: string;
 }
 
 /**
@@ -1149,9 +1161,35 @@ export function computeBackoff(
 }
 
 /**
+ * Fetch all posts for a repoKey by paging through all list_posts results.
+ * Returns all posts accumulated across pages, up to MAX_FETCH posts.
+ */
+async function fetchAllPosts(
+  blogServerUrl: string,
+  repoKey?: string,
+): Promise<Array<{ id: string; createdAt: string; eventType: string; repoKey: string; title: string }>> {
+  const allPosts: Array<{ id: string; createdAt: string; eventType: string; repoKey: string; title: string }> = [];
+  let cursor: string | undefined;
+  const MAX_FETCH = 10_000;
+
+  do {
+    const params: Record<string, unknown> = { limit: 100 };
+    if (repoKey) params['repoKey'] = repoKey;
+    if (cursor) params['cursor'] = cursor;
+
+    const result = (await callMcpTool(blogServerUrl, 'list_posts', params)) as unknown as ListPostsRpcResult;
+    allPosts.push(...result.posts);
+    cursor = result.nextCursor;
+  } while (cursor && allPosts.length < MAX_FETCH);
+
+  return allPosts;
+}
+
+/**
  * blog-cli watch [--repo owner/repo] [--interval N]
  *
  * Polls the MCP server for new posts and prints them in real time.
+ * - Paginates through ALL posts on each poll to handle bursts >100 posts
  * - Uses client-side seen-IDs set to deduplicate across polls
  * - Exponential backoff on connection errors (1s → 30s max)
  * - SIGINT prints summary: "N new posts seen."
@@ -1175,15 +1213,9 @@ export async function runWatchCommand(args: ParsedArgs): Promise<void> {
 
   try {
     while (!shutdown) {
-      // Build list_posts params
-      const params: Record<string, unknown> = {
-        limit: 100,
-      };
-      if (repoKey) params['repoKey'] = repoKey;
-
       try {
-        const result = (await callMcpTool(blogServerUrl, 'list_posts', params)) as unknown as ListPostsRpcResult;
-        const { posts } = result;
+        // Fetch ALL posts (paginate through all pages) to handle bursts
+        const posts = await fetchAllPosts(blogServerUrl, repoKey);
 
         // Filter to genuinely new posts (not yet seen)
         const newPosts = detectNewPosts(seenIds, posts);

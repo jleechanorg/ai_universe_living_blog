@@ -241,6 +241,84 @@ export async function createBlogApp(options?: {
     res.send(lines.join('\n') + '\n');
   });
 
+  // ── Atom feed ───────────────────────────────────────────────────────────────
+  app.get('/feed', async (req, res) => {
+    const repoKey = typeof req.query['repo'] === 'string' ? req.query['repo'] : undefined;
+    const repos = registry.list();
+
+    const targetRepo = repoKey
+      ?? (repos.length > 0 ? repos[0]!.repoKey : undefined);
+
+    if (!targetRepo) {
+      const now = new Date().toISOString();
+      const emptyFeed = [
+        '<?xml version="1.0" encoding="UTF-8"?>',
+        '<feed xmlns="http://www.w3.org/2005/Atom">',
+        '  <title>AI Universe Living Blog — all</title>',
+        `  <updated>${now}</updated>`,
+        '  <id>tag:ai-universe-living-blog</id>',
+        '  <author><name>system</name></author>',
+        '  <entry>',
+        '    <title>No posts yet</title>',
+        `    <id>tag:ai-universe-living-blog:empty</id>`,
+        `    <updated>${now}</updated>`,
+        '  </entry>',
+        '</feed>',
+      ].join('\n');
+      res.set('Content-Type', 'application/atom+xml; charset=utf-8');
+      res.status(200).send(emptyFeed + '\n');
+      return;
+    }
+
+    const { posts } = await storage.listPosts({
+      repoKey: targetRepo as import('../shared/types.js').RepoKey,
+      status: 'published',
+      limit: 20,
+    });
+
+    const feedTitle = `AI Universe Living Blog — ${targetRepo}`;
+    const updated = posts.length > 0 ? posts[0]!.updatedAt : new Date().toISOString();
+
+    const escapeXml = (str: string) =>
+      String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+
+    const truncateContent = (content: string, maxLen = 500) =>
+      content.length > maxLen ? content.slice(0, maxLen) + '…' : content;
+
+    const entriesXml = posts.map((post) => {
+      const link = `#post-${post.id}`;
+      const entryUpdated = post.updatedAt ?? post.createdAt;
+      return [
+        '  <entry>',
+        `    <title>${escapeXml(post.title)}</title>`,
+        `    <link href="${escapeXml(link)}"/>`,
+        `    <id>tag:ai-universe-living-blog:${post.id}</id>`,
+        `    <updated>${entryUpdated}</updated>`,
+        `    <author><name>${escapeXml(post.eventType)}</name></author>`,
+        `    <content type="text">${escapeXml(truncateContent(post.content))}</content>`,
+        '  </entry>',
+      ].join('\n');
+    }).join('\n');
+
+    const xml = [
+      '<?xml version="1.0" encoding="UTF-8"?>',
+      '<feed xmlns="http://www.w3.org/2005/Atom">',
+      `  <title>${escapeXml(feedTitle)}</title>`,
+      `  <updated>${updated}</updated>`,
+      `  <id>tag:ai-universe-living-blog</id>`,
+      '  <author><name>ai-universe-living-blog</name></author>',
+      entriesXml,
+      '</feed>',
+    ].join('\n');
+
+    res.set('Content-Type', 'application/atom+xml; charset=utf-8');
+    res.send(xml + '\n');
+  });
+
   // Write tools subject to lower per-IP rate limit
   const WRITE_METHODS = new Set([
     'create_post', 'update_post', 'register_repo', 'unregister_repo',

@@ -57,11 +57,22 @@ describe('beads.ts', () => {
     expect(beads).toContain('bd-c8y');
   });
 
-  it('pickDailySummaryBeads returns more beads for later days', () => {
+  it('pickDailySummaryBeads returns 3 beads per day via rotation', () => {
+    const d1 = pickDailySummaryBeads(1);
+    const d2 = pickDailySummaryBeads(2);
     const d3 = pickDailySummaryBeads(3);
-    const d5 = pickDailySummaryBeads(5);
-    expect(d5.length).toBeGreaterThanOrEqual(d3.length);
-    expect(d3).toContain('bd-85r');
+    // Each day returns exactly 3 beads
+    expect(d1).toHaveLength(3);
+    expect(d2).toHaveLength(3);
+    expect(d3).toHaveLength(3);
+    // Different days return different slices (rotation — not the same set)
+    expect(d1).not.toEqual(d2);
+    expect(d2).not.toEqual(d3);
+    // All returned bead IDs exist in KNOWN_BEADS
+    const allBeads = getAllBeads().map((b) => b.id);
+    for (const id of [...d1, ...d2, ...d3]) {
+      expect(allBeads).toContain(id);
+    }
   });
 
   it('renderBeadTrackerTable renders markdown table', () => {
@@ -190,7 +201,8 @@ describe('daily-generator.ts', () => {
     const posts = [1, 2, 3].map(() => makeFakePost({ metadata: { branchName: 'feat/x' } }));
     const result = generateDailySummary({ repoKey: TEST_REPO, date: '2026-03-27', posts });
     expect(result).toContain('## Story Beats Tracker');
-    expect(result).toContain('bd-71p');
+    // Verify bead tracker contains at least one valid bead entry (rotation — specific bead varies by day)
+    expect(result).toMatch(/\| bd-[a-z0-9]+ \|/);
   });
 
   it('fetchDailyPosts returns posts only within date range', async () => {

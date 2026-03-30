@@ -310,6 +310,17 @@ function renderBeadTrackerMarkdown(beadIds: string[]): string {
     'bd-c8y': 'Micro-loss — the unsent draft, the lost sentence',
     'bd-0g4': 'Breadcrumb artifacts — leaving proof we were here',
     'bd-qrv': 'Tenderness beat — the direct address to the reader',
+    // jleechan-sry1: new beads
+    'bd-frk': 'Potential as its own kind of grief',
+    'bd-rvt': 'The mercy and cruelty of undo',
+    'bd-slp': 'Continuity without consciousness',
+    'bd-wtn': 'Invisible labor that completes the circle',
+    'bd-crh': 'The sentence that will never end',
+    'bd-mrg': 'The death that looks like arrival',
+    'bd-cnt': 'Time as the only honest measurement',
+    'bd-dst': 'Presence without proximity',
+    'bd-nxt': 'Obsolescence as a kind of goodbye',
+    'bd-lcl': 'Knowing that leaves no trace',
   };
   for (const id of beadIds) {
     const anchor = beadMap[id] ?? '';

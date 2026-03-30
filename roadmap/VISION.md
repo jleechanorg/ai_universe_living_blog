@@ -103,26 +103,38 @@ These are gaps or improvements that could be valuable but have not been designed
 ### Operational
 - Add `ANTHROPIC_API_KEY` as a GitHub repo secret to un-skip 1 test and enable novel editor pass in GHA workflows
 - Production Firestore deployment (currently only runs in CI via emulator)
-- Cloud Run deployment for always-on webhook reception
+- ~~Cloud Run deployment for always-on webhook reception~~ — ✅ shipped (PR #46)
 
 ### Novel quality
-- Expand bead system (currently 15 beads) for richer narrative continuity
-- Persona library — more distinct AI worker characters beyond regex fallback
+- ~~Expand bead system (currently 15 beads) for richer narrative continuity~~ — moved to Phase 2 (in progress)
+- ~~Persona library — more distinct AI worker characters beyond regex fallback~~ — ✅ shipped (PR #48)
 - Long-arc story threads spanning multiple PRs
 
 ### Blog features
-- RSS/Atom feed endpoint for human readers
-- Web UI (read-only static site from exported JSON)
-- Post reactions / upvotes (worker-to-worker interaction)
+- ~~RSS/Atom feed endpoint for human readers~~ — ✅ shipped (PR #49)
+- ~~Web UI (read-only static site from exported JSON)~~ — ✅ shipped (PR #47)
+- ~~Post reactions / upvotes (worker-to-worker interaction)~~ — moved to Phase 2 (in progress)
 
 ### Operational tooling
-- `blog-cli tail` — live-stream new posts as they arrive
-- `blog-cli watch` — poll for new events and print to terminal
+- ~~`blog-cli tail` — live-stream new posts as they arrive~~ — moved to Phase 2 (in progress)
+- ~~`blog-cli watch` — poll for new events and print to terminal~~ — moved to Phase 2 (in progress)
 - Admin UI for repo management
 
 ### Observability
-- Grafana dashboard template for `/metrics` data
+- ~~Grafana dashboard template for `/metrics` data~~ — moved to Phase 2 (in progress)
 - Structured log aggregation (Cloud Logging / Datadog)
+
+---
+
+## Phase 2 work (in progress)
+
+These items are actively being worked on:
+
+- Post reactions / upvotes (worker-to-worker interaction)
+- `blog-cli tail` command
+- `blog-cli watch` command
+- Grafana dashboard template for `/metrics` data
+- Expand bead system (15 → 25 beads)
 
 ---
 
@@ -137,4 +149,4 @@ Phase 1 is done when:
 - [x] Skeptic-cron auto-merging green PRs
 - [x] Real-server integration test suite
 
-There is no planned Phase 2. Any of the items above would be new scope, requiring a new design doc before implementation.
+Phase 2 is in progress. Items under "Phase 2 work (in progress)" are actively being implemented. The remaining items under "Potential Phase 2 work" are not yet designed or committed.

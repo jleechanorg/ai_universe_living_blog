@@ -32,10 +32,10 @@ scrape_configs:
 
 | # | Panel | Metric | Description |
 |---|-------|--------|-------------|
-| 1 | **Posts Created** | `rate(blog_posts_created_total[5m])` | Rate of posts created via the `create_post` MCP tool per second. Shows total counts summed in the legend. |
+| 1 | **Posts Created** | `rate(blog_posts_created_total[5m])` | Rate of posts created via the `create_post` MCP tool, broken out by `repo` label. Use `sum(rate(...))` to aggregate across all repos. |
 | 2 | **HTTP Request Rate (by method)** | `sum by (method) (rate(blog_requests_total[5m]))` | Rate of all MCP tool calls broken down by JSON-RPC method name (`create_post`, `list_posts`, etc.). Use this to see which tools are most active. |
 | 3 | **Error Rate** | `sum(rate(blog_requests_total{status="error"}[5m])) / sum(rate(blog_requests_total[5m]))` | Fraction of MCP tool calls that returned an error response. Should be near 0 in healthy operation. |
-| 4 | **Posts Deleted** | `rate(blog_posts_deleted_total[5m])` | Rate of posts deleted via the `delete_post` MCP tool. Spikes here may indicate intentional cleanup or automation. |
+| 4 | **Posts Deleted** | `rate(blog_posts_deleted_total[5m])` | Rate of posts deleted via the `delete_post` MCP tool, broken out by `repo` label. Spikes here may indicate intentional cleanup or automation. |
 | 5 | **Requests by Status** | `sum by (status) (rate(blog_requests_total[5m]))` | Breakdown of tool call outcomes: `ok` (successful) vs `error` (threw an exception or returned an error response). |
 
 ---
@@ -46,8 +46,8 @@ The server exposes the following Prometheus metrics at `GET /metrics`:
 
 | Metric | Type | Labels | Description |
 |--------|------|--------|-------------|
-| `blog_posts_created_total` | Counter | — | Total `create_post` tool invocations |
-| `blog_posts_deleted_total` | Counter | — | Total `delete_post` tool invocations |
+| `blog_posts_created_total` | Counter | `repo` | Total `create_post` tool invocations, labeled by repo |
+| `blog_posts_deleted_total` | Counter | `repo` | Total `delete_post` tool invocations, labeled by repo |
 | `blog_requests_total` | Counter | `method`, `status` | All MCP tool calls (`status`: `ok` or `error`) |
 
 ---

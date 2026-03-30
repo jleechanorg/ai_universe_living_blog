@@ -75,8 +75,9 @@ export interface ParsedArgs {
   enabled?: boolean;
   // replay-event
   count?: number;
-  // watch
+  // tail / watch
   interval?: number;
+  format?: 'text' | 'json';
   // env overrides
   blogServerUrl: string;
 }
@@ -129,7 +130,7 @@ export function parseArgs(argv: string[]): ParsedArgs {
   if (!command || command.startsWith('--')) {
     throw new Error(
       'Usage: blog-cli <command> [options]\n' +
-        'Commands: branch-entry, daily-summary, chat, config, register-repo, list, get, search, stats, delete, unregister-repo, list-repos, export, list-threads, get-thread, update-post, watch',
+        'Commands: branch-entry, daily-summary, chat, config, register-repo, list, get, search, stats, delete, unregister-repo, list-repos, export, list-threads, get-thread, update-post, tail, watch',
     );
   }
 
@@ -366,6 +367,22 @@ export function parseArgs(argv: string[]): ParsedArgs {
         blogServerUrl,
       };
     }
+    case 'tail': {
+      if (!raw['repo'])
+        throw new Error('tail requires --repo <owner/repo>');
+      return {
+        command,
+        repo: String(raw['repo']),
+        interval: (() => {
+          const rawInterval = raw['interval'];
+          if (!rawInterval) return 2;
+          const parsed = parseInt(String(rawInterval), 10);
+          return Number.isNaN(parsed) || parsed <= 0 ? 2 : parsed;
+        })(),
+        format: (raw['format'] === 'json' ? 'json' : 'text') as 'text' | 'json',
+        blogServerUrl,
+      };
+    }
     case 'watch': {
       let interval: number | undefined;
       const intervalRaw = raw['interval'];
@@ -390,7 +407,7 @@ export function parseArgs(argv: string[]): ParsedArgs {
       throw new Error(
         `Unknown command: "${command}"\n` +
           'Usage: blog-cli <command> [options]\n' +
-          'Commands: branch-entry, daily-summary, chat, config, register-repo, list, get, search, stats, delete, unregister-repo, list-repos, export, list-threads, get-thread, update-post, update-repo, generate-api-key, replay-event, watch',
+          'Commands: branch-entry, daily-summary, chat, config, register-repo, list, get, search, stats, delete, unregister-repo, list-repos, export, list-threads, get-thread, update-post, update-repo, generate-api-key, replay-event, tail, watch',
       );
   }
 }
@@ -1299,6 +1316,103 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+// ─── Tail command ────────────────────────────────────────────────────────────
+
+/**
+ * blog-cli tail --repo owner/repo [--interval N] [--format text|json]
+ *
+ * Continuously polls the MCP server for new posts, starting from the latest
+ * known post (createdAt-based). Prints each new post as:
+ *   [timestamp] [eventType] [repoKey] title
+ * and exits cleanly on SIGINT with "Received N posts."
+ *
+ * Network errors trigger exponential backoff: 2s → 4s → 8s → 16s → 30s cap.
+ *
+ * Cursor strategy: fetch all posts (no cursor) and filter client-side to only
+ * emit posts with createdAt strictly after lastSeenCreatedAt. This is necessary
+ * because list_posts returns posts sorted newest-first and the storage cursor
+ * finds the position *after* the given id — meaning cursor=<oldest> returns []
+ * on the next poll. Tracking the newest timestamp (not id) correctly handles
+ * posts arriving between polls.
+ */
+export async function runTailCommand(args: ParsedArgs): Promise<void> {
+  const repoKey = args.repo!;
+  const intervalMs = (args.interval ?? 2) * 1000;
+  const isJson = args.format === 'json';
+  // Tracks the createdAt of the oldest post from the last poll.
+  // The next poll's filter skips posts with createdAt <= this value,
+  // which correctly deduplicates all posts from the previous batch.
+  // For posts sharing the same timestamp as the oldest from the previous
+  // batch, they may be skipped (millisecond-collision edge case).
+  let lastSeenCreatedAt: string | undefined;
+  let receivedCount = 0;
+  let backoffMs = 2000;
+  const BACKOFF_CAP = 30_000;
+
+  // Register SIGINT / SIGTERM handler
+  const shutdown = (signal: string): void => {
+    console.error(`\n${signal} — Received ${receivedCount} post${receivedCount !== 1 ? 's' : ''}.`);
+    process.exit(0);
+  };
+  process.once('SIGINT', () => shutdown('SIGINT'));
+  process.once('SIGTERM', () => shutdown('SIGTERM'));
+
+  // eslint-disable-next-line no-constant-condition
+  while (true) {
+    let posts: Array<Record<string, unknown>>;
+    try {
+      const result = await callMcpTool(args.blogServerUrl, 'list_posts', {
+        repoKey,
+        limit: 50,
+      });
+      posts = (result['posts'] as Array<Record<string, unknown>>) ?? [];
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error(`[tail] network error: ${msg} — retrying in ${backoffMs / 1000}s`);
+      await new Promise((resolve) => setTimeout(resolve, backoffMs));
+      backoffMs = Math.min(backoffMs * 2, BACKOFF_CAP);
+      continue;
+    }
+
+    // Reset backoff on any successful HTTP response (empty or with posts).
+    backoffMs = 2000;
+
+    if (posts.length > 0) {
+      // Posts are newest-first (createdAt desc, seq tiebreak).
+      // Track the OLDEST post's timestamp so the next poll skips everything
+      // from this batch (preventing duplicate emission of the newest post).
+      const oldestCreatedAt = posts[posts.length - 1]!['createdAt'] as string | undefined;
+
+      for (const post of posts) {
+        const postCreatedAt = post['createdAt'] as string | undefined;
+        // Skip posts we've already shown.
+        // Using <= so posts at exactly lastSeenCreatedAt are also skipped
+        // (they were the oldest post from the previous poll's batch).
+        if (postCreatedAt !== undefined && lastSeenCreatedAt !== undefined && postCreatedAt <= lastSeenCreatedAt) {
+          continue;
+        }
+        if (isJson) {
+          console.log(JSON.stringify(post));
+        } else {
+          const ts = postCreatedAt?.slice(0, 19) ?? '';
+          const eventType = post['eventType'] as string ?? '';
+          const title = post['title'] as string ?? '';
+          console.log(`[${ts}] [${eventType}] [${repoKey}] ${title}`);
+        }
+        receivedCount++;
+      }
+
+      // After emitting all new posts, advance lastSeen to the oldest post
+      // from this batch. The next poll skips anything <= this timestamp.
+      if (oldestCreatedAt !== undefined) {
+        lastSeenCreatedAt = oldestCreatedAt;
+      }
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, intervalMs));
+  }
+}
+
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
 export async function main(argv = process.argv.slice(2)): Promise<void> {
@@ -1368,6 +1482,9 @@ export async function main(argv = process.argv.slice(2)): Promise<void> {
         break;
       case 'replay-event':
         await runReplayEventCommand(parsed);
+        break;
+      case 'tail':
+        await runTailCommand(parsed);
         break;
       case 'watch':
         await runWatchCommand(parsed);

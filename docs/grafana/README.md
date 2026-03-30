@@ -75,9 +75,9 @@ Once the datasource is connected, consider adding these Grafana alert rules:
 ## Local Development
 
 ```bash
-# Start the blog MCP server (serves /metrics at localhost:8081/metrics)
+# Start the blog MCP server (serves /metrics at localhost:8888/metrics)
 npm run dev:blog
 
 # In another terminal, verify metrics are being emitted
-curl http://localhost:8081/metrics
+curl http://localhost:8888/metrics
 ```

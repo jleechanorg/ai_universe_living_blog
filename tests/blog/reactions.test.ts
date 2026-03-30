@@ -164,7 +164,7 @@ describe('post_reaction', () => {
   // ── 5. react_to_post — emoji key cleanup when last worker un-reacts ─────────
 
   it('removes the emoji key entirely when the last worker un-reacts', async () => {
-    // wc-worker-2 is the last 👎 reactor — remove them
+    // wc-worker-2 is the last 👍 reactor — remove them
     const res = await request(app)
       .post('/mcp')
       .send(

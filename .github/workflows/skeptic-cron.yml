@@ -90,9 +90,11 @@ jobs:
               echo "  [2] No merge conflicts: FAIL (mergeable=$MERGEABLE state=$MERGEABLE_STATE)"
             fi
 
-            # 3. No CHANGES_REQUESTED reviews
+            # 3. No CHANGES_REQUESTED reviews (latest review per reviewer only)
+            # group_by(.user.login) ensures we check the most recent review from each reviewer,
+            # so a COMMENTED or APPROVED re-review supersedes a prior CHANGES_REQUESTED.
             CHANGES_REQUESTED=$(gh api repos/${{ github.repository }}/pulls/"$PR_NUM"/reviews \
-              --jq '[.[] | select(.state == "CHANGES_REQUESTED")] | length' 2>/dev/null || echo 0)
+              --jq '[group_by(.user.login) | .[] | max_by(.submitted_at) | select(.state == "CHANGES_REQUESTED")] | length' 2>/dev/null || echo 0)
             if [ "$CHANGES_REQUESTED" = "0" ] || [ -z "$CHANGES_REQUESTED" ]; then
               echo "  [3] No CHANGES_REQ:     PASS"
             else

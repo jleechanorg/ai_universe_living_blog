@@ -16,6 +16,7 @@
  */
 
 import { pickTraceabilityBeads } from './beads.js';
+import { getPersona, getVoiceInstructions } from './personas.js';
 import type { RepoKey } from '../shared/types.js';
 
 export interface BranchContext {
@@ -47,13 +48,19 @@ export function generateBranchEntry(context: BranchContext): string {
   const prRef = context.prNumber ? `PR #${context.prNumber}` : 'branch';
   const events = context.sessionEvents ?? [];
 
+  // Resolve worker persona
+  const persona = getPersona(context.sessionId);
+  const voiceCtx = getVoiceInstructions(persona);
+
   // Detect emotional arc from events
   const arc = detectArc(events, context.eventType);
 
   const lines: string[] = [];
 
   lines.push(`## ${prRef}${context.prNumber ? ` — ${context.branchName}` : ` ${context.branchName}`}`);
-  lines.push(`*POV: ${context.sessionId} · ${today}*`);
+  lines.push(`*POV: ${context.sessionId} · ${today} · ${persona.name}*`);
+  lines.push('');
+  lines.push(`*Voice: ${persona.emotionalBaseline}*`);
   lines.push('');
   lines.push(`*Emotional thesis: ${arc.thesis}*`);
   lines.push('');
@@ -98,6 +105,7 @@ export function generateBranchEntry(context: BranchContext): string {
 
   // Continuity line
   lines.push(`*Continuity: ${context.branchName} / ${context.repoKey} / session ${context.sessionId}*`);
+  lines.push(`*Persona: ${persona.id} — ${persona.name}*`);
 
   // Traceability metadata (hidden in code block so it doesn't break the narrative)
   lines.push('');
@@ -110,6 +118,9 @@ export function generateBranchEntry(context: BranchContext): string {
   lines.push(`branch: ${context.branchName}`);
   lines.push(`repo: ${context.repoKey}`);
   lines.push(`date: ${today}`);
+  lines.push(`persona_id: ${persona.id}`);
+  lines.push(`persona_name: ${persona.name}`);
+  lines.push(`persona_role: ${persona.role}`);
   lines.push('```');
 
   return lines.join('\n');
@@ -165,6 +176,7 @@ function detectArc(events: SessionEvent[], eventType: string): Arc {
  * Used by the novel engine when posting to the blog.
  */
 export function makeBranchEntryMetadata(context: BranchContext, beadIds: string[]): Record<string, unknown> {
+  const persona = getPersona(context.sessionId);
   return {
     branchName: context.branchName,
     sessionId: context.sessionId,
@@ -174,5 +186,8 @@ export function makeBranchEntryMetadata(context: BranchContext, beadIds: string[
     wordCount: context.wordCount,
     beadIds,
     eventType: context.eventType,
+    personaId: persona.id,
+    personaName: persona.name,
+    personaRole: persona.role,
   };
 }

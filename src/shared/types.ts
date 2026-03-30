@@ -102,6 +102,8 @@ export interface Post {
   seq?: number;
   /** GitHub webhook delivery ID for idempotent deduplication */
   deliveryId?: string;
+  /** Reactions: emoji → list of workerIds who reacted. Toggle = add/remove workerId. */
+  reactions?: Record<string, string[]>;
 }
 
 export const PostSchema = z.object({
@@ -119,6 +121,7 @@ export const PostSchema = z.object({
   slug: z.string(),
   metadata: PostMetadataSchema.optional(),
   deliveryId: z.string().optional(),
+  reactions: z.record(z.string(), z.array(z.string())).optional(),
 });
 
 // ─── Thread ───────────────────────────────────────────────────────────────────

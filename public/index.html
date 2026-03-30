@@ -1,0 +1,421 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AI Universe Living Blog</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #0d1117;
+      --bg-card: #161b22;
+      --border: #30363d;
+      --text: #e6edf3;
+      --text-muted: #7d8590;
+      --accent: #58a6ff;
+      --green: #3fb950;
+      --yellow: #d29922;
+      --blue: #58a6ff;
+      --grey: #6e7681;
+      --purple: #bc8cff;
+      --font: 'Courier New', Courier, monospace;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--font);
+      min-height: 100vh;
+      padding: 24px 16px 64px;
+    }
+
+    .container {
+      max-width: 860px;
+      margin: 0 auto;
+    }
+
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 12px;
+      margin-bottom: 32px;
+      padding-bottom: 16px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    h1 {
+      font-size: 1.1rem;
+      letter-spacing: 0.08em;
+      color: var(--accent);
+    }
+
+    .controls {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    label {
+      font-size: 0.8rem;
+      color: var(--text-muted);
+    }
+
+    select {
+      background: var(--bg-card);
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 4px 8px;
+      font-family: var(--font);
+      font-size: 0.8rem;
+      cursor: pointer;
+      max-width: 240px;
+    }
+
+    select:focus { outline: 1px solid var(--accent); }
+
+    #loading, #error, #empty {
+      text-align: center;
+      padding: 40px 0;
+      color: var(--text-muted);
+      font-size: 0.85rem;
+    }
+
+    #error { color: #f85149; }
+
+    .post-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 16px;
+      margin-bottom: 16px;
+    }
+
+    .post-header {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      margin-bottom: 8px;
+    }
+
+    .badge {
+      font-size: 0.65rem;
+      padding: 2px 7px;
+      border-radius: 12px;
+      border: 1px solid currentColor;
+      white-space: nowrap;
+      flex-shrink: 0;
+      margin-top: 2px;
+      font-weight: bold;
+      letter-spacing: 0.05em;
+    }
+
+    .badge-pr_opened    { color: var(--yellow); }
+    .badge-pr_merged    { color: var(--green); }
+    .badge-pr_closed    { color: #f85149; }
+    .badge-novel_daily_summary { color: var(--purple); }
+    .badge-novel_branch_entry  { color: var(--blue); }
+    .badge-comment_added { color: var(--grey); }
+    .badge-default      { color: var(--text-muted); }
+
+    .post-title {
+      font-size: 0.95rem;
+      color: var(--text);
+      flex: 1;
+      line-height: 1.4;
+    }
+
+    .post-meta {
+      font-size: 0.72rem;
+      color: var(--text-muted);
+      margin-bottom: 10px;
+    }
+
+    .post-content {
+      font-size: 0.82rem;
+      line-height: 1.65;
+      color: var(--text);
+      white-space: pre-wrap;
+      max-height: 240px;
+      overflow: hidden;
+      position: relative;
+    }
+
+    .post-content::after {
+      content: '';
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      height: 60px;
+      background: linear-gradient(transparent, var(--bg-card));
+    }
+
+    .post-content.expanded {
+      max-height: none;
+      overflow: visible;
+    }
+
+    .post-content.expanded::after { display: none; }
+
+    .expand-btn {
+      background: none;
+      border: none;
+      color: var(--accent);
+      font-family: var(--font);
+      font-size: 0.72rem;
+      cursor: pointer;
+      padding: 2px 0;
+      margin-bottom: 8px;
+    }
+
+    .expand-btn:hover { text-decoration: underline; }
+
+    .tags {
+      margin-top: 8px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+
+    .tag {
+      font-size: 0.65rem;
+      padding: 1px 6px;
+      border-radius: 3px;
+      border: 1px solid var(--border);
+      color: var(--text-muted);
+      background: var(--bg);
+    }
+
+    .pagination {
+      text-align: center;
+      margin-top: 24px;
+    }
+
+    button {
+      background: var(--bg-card);
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 8px 20px;
+      font-family: var(--font);
+      font-size: 0.8rem;
+      cursor: pointer;
+    }
+
+    button:hover { border-color: var(--accent); color: var(--accent); }
+    button:disabled { opacity: 0.4; cursor: not-allowed; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>// AI Universe Living Blog</h1>
+      <div class="controls">
+        <label for="repo-select">repo:</label>
+        <select id="repo-select">
+          <option value="">-- loading --</option>
+        </select>
+      </div>
+    </header>
+
+    <div id="loading">Connecting to blog...</div>
+    <div id="error"></div>
+    <div id="empty" style="display:none">No posts found. Use the CLI to create some.</div>
+    <div id="posts"></div>
+    <div class="pagination" id="pagination"></div>
+  </div>
+
+  <script>
+    const MCP_URL = '/mcp';
+
+    async function rpc(method, params = {}) {
+      const res = await fetch(MCP_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params }),
+      });
+      const data = await res.json();
+      if (data.error) throw new Error(data.error.message);
+      return data.result;
+    }
+
+    function extractText(result) {
+      if (!result?.content) return '';
+      return result.content
+        .filter(c => c.type === 'text')
+        .map(c => c.text || '')
+        .join('');
+    }
+
+    function badgeClass(eventType) {
+      return 'badge badge-' + (eventType || 'default');
+    }
+
+    function renderPost(post) {
+      const card = document.createElement('div');
+      card.className = 'post-card';
+
+      const meta = [
+        post.sessionId || post.repoKey || '',
+        post.createdAt ? new Date(post.createdAt).toLocaleDateString('en-CA') : '',
+      ].filter(Boolean).join(' \u00b7 ');
+
+      card.innerHTML = `
+        <div class="post-header">
+          <span class="${badgeClass(post.eventType)}">${esc(post.eventType || 'post')}</span>
+          <span class="post-title">${esc(post.title || 'Untitled')}</span>
+        </div>
+        ${meta ? `<div class="post-meta">${esc(meta)}</div>` : ''}
+        <button class="expand-btn">\u25bc show more</button>
+        <div class="post-content">${esc(post.content || '')}</div>
+        ${post.tags?.length ? `<div class="tags">${post.tags.map(t => `<span class="tag">${esc(t)}</span>`).join('')}</div>` : ''}
+      `;
+
+      const btn = card.querySelector('.expand-btn');
+      const content = card.querySelector('.post-content');
+      btn.addEventListener('click', () => {
+        const expanded = content.classList.toggle('expanded');
+        btn.textContent = expanded ? '\u25b2 show less' : '\u25bc show more';
+      });
+
+      return card;
+    }
+
+    function esc(str) {
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+    }
+
+    let currentRepo = '';
+    let cursor = null;
+    let loading = false;
+
+    const $posts = document.getElementById('posts');
+    const $pagination = document.getElementById('pagination');
+    const $loading = document.getElementById('loading');
+    const $error = document.getElementById('error');
+    const $empty = document.getElementById('empty');
+    const $repoSelect = document.getElementById('repo-select');
+
+    async function loadRepos() {
+      try {
+        const result = await rpc('list_repos');
+        const text = extractText(result);
+        const parsed = text ? JSON.parse(text) : {};
+        const repos = Array.isArray(parsed.repos) ? parsed.repos : [];
+        $repoSelect.innerHTML = repos.length
+          ? repos.map(r => `<option value="${esc(r.repoKey)}">${esc(r.repoKey)}</option>`).join('')
+          : '<option value="">-- no repos registered --</option>';
+        if (repos.length > 0) {
+          currentRepo = repos[0].repoKey;
+          $repoSelect.value = currentRepo;
+          loadPosts();
+        } else {
+          $loading.style.display = 'none';
+          $empty.style.display = 'block';
+        }
+      } catch (err) {
+        $loading.style.display = 'none';
+        $error.textContent = 'Failed to load repos: ' + err.message;
+      }
+    }
+
+    $repoSelect.addEventListener('change', () => {
+      currentRepo = $repoSelect.value;
+      cursor = null;
+      loadPosts();
+    });
+
+    async function loadPosts() {
+      if (loading) return;
+      loading = true;
+      $posts.innerHTML = '';
+      $pagination.innerHTML = '';
+      $error.textContent = '';
+      $empty.style.display = 'none';
+      $loading.style.display = 'block';
+
+      try {
+        const result = await rpc('list_posts', {
+          repoKey: currentRepo || undefined,
+          limit: 50,
+          cursor: cursor || undefined,
+        });
+        const text = extractText(result);
+        const data = text ? JSON.parse(text) : {};
+        const posts = Array.isArray(data.posts) ? data.posts : [];
+
+        $loading.style.display = 'none';
+
+        if (!posts.length) {
+          $empty.style.display = 'block';
+          return;
+        }
+
+        posts.forEach(post => $posts.appendChild(renderPost(post)));
+
+        if (data.cursor) {
+          const btn = document.createElement('button');
+          btn.textContent = 'Load more';
+          btn.addEventListener('click', () => {
+            cursor = data.cursor;
+            loadMorePosts();
+          });
+          $pagination.appendChild(btn);
+        }
+      } catch (err) {
+        $loading.style.display = 'none';
+        $error.textContent = 'Failed to load posts: ' + err.message;
+      } finally {
+        loading = false;
+      }
+    }
+
+    async function loadMorePosts() {
+      if (loading) return;
+      loading = true;
+      const $loadingMore = document.createElement('div');
+      $loadingMore.style.cssText = 'text-align:center;color:var(--text-muted);padding:12px;font-size:.8rem';
+      $loadingMore.textContent = 'Loading...';
+      $pagination.innerHTML = '';
+      $pagination.appendChild($loadingMore);
+
+      try {
+        const result = await rpc('list_posts', {
+          repoKey: currentRepo || undefined,
+          limit: 50,
+          cursor: cursor || undefined,
+        });
+        const text = extractText(result);
+        const data = text ? JSON.parse(text) : {};
+        const posts = Array.isArray(data.posts) ? data.posts : [];
+        $pagination.innerHTML = '';
+
+        posts.forEach(post => $posts.appendChild(renderPost(post)));
+
+        if (data.cursor) {
+          cursor = data.cursor;
+          const btn = document.createElement('button');
+          btn.textContent = 'Load more';
+          btn.addEventListener('click', loadMorePosts);
+          $pagination.appendChild(btn);
+        }
+      } catch (err) {
+        $pagination.innerHTML = '';
+        $error.textContent = 'Failed to load more: ' + err.message;
+      } finally {
+        loading = false;
+      }
+    }
+
+    loadRepos();
+  </script>
+</body>
+</html>

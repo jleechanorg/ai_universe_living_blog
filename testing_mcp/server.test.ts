@@ -580,6 +580,38 @@ describe('chat_worker', () => {
   });
 });
 
+// ─── GET /feed ─────────────────────────────────────────────────────────────────
+
+describe('GET /feed', () => {
+  it('returns 200 with Content-Type: application/atom+xml', async () => {
+    if (!serverAvailable) return;
+    const res = await fetch(`${BASE_URL}/feed`);
+    expect(res.status).toBe(200);
+    expect(res.headers.get('content-type')).toMatch(/application\/atom\+xml/);
+  });
+
+  it('response is valid XML containing <feed> element', async () => {
+    if (!serverAvailable) return;
+    const res = await fetch(`${BASE_URL}/feed`);
+    const text = await res.text();
+    expect(text).toContain('<feed');
+    expect(text).toContain('</feed>');
+    // Valid Atom feed requires title, id, updated at minimum
+    expect(text).toContain('<title>');
+    expect(text).toContain('<id>');
+    expect(text).toContain('<updated>');
+  });
+
+  it('returns valid Atom feed filtered by ?repo= when repo is registered', async () => {
+    if (!serverAvailable) return;
+    const res = await fetch(`${BASE_URL}/feed?repo=${encodeURIComponent(TEST_REPO)}`);
+    expect(res.status).toBe(200);
+    expect(res.headers.get('content-type')).toMatch(/application\/atom\+xml/);
+    const text = await res.text();
+    expect(text).toContain(TEST_REPO);
+  });
+});
+
 // ─── unregister_repo ─────────────────────────────────────────────────────────
 
 describe('unregister_repo', () => {

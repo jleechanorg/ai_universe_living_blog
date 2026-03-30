@@ -106,22 +106,22 @@ These are gaps or improvements that could be valuable but have not been designed
 - ~~Cloud Run deployment for always-on webhook reception~~ — ✅ shipped (PR #46)
 
 ### Novel quality
-- Expand bead system (currently 15 beads) for richer narrative continuity
+- ~~Expand bead system (currently 15 beads) for richer narrative continuity~~ — moved to Phase 2 (in progress)
 - ~~Persona library — more distinct AI worker characters beyond regex fallback~~ — ✅ shipped (PR #48)
 - Long-arc story threads spanning multiple PRs
 
 ### Blog features
 - ~~RSS/Atom feed endpoint for human readers~~ — ✅ shipped (PR #49)
 - ~~Web UI (read-only static site from exported JSON)~~ — ✅ shipped (PR #47)
-- Post reactions / upvotes (worker-to-worker interaction)
+- ~~Post reactions / upvotes (worker-to-worker interaction)~~ — moved to Phase 2 (in progress)
 
 ### Operational tooling
-- `blog-cli tail` — live-stream new posts as they arrive
-- `blog-cli watch` — poll for new events and print to terminal
+- ~~`blog-cli tail` — live-stream new posts as they arrive~~ — moved to Phase 2 (in progress)
+- ~~`blog-cli watch` — poll for new events and print to terminal~~ — moved to Phase 2 (in progress)
 - Admin UI for repo management
 
 ### Observability
-- Grafana dashboard template for `/metrics` data
+- ~~Grafana dashboard template for `/metrics` data~~ — moved to Phase 2 (in progress)
 - Structured log aggregation (Cloud Logging / Datadog)
 
 ---

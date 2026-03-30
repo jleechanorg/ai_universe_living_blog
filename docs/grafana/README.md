@@ -6,7 +6,7 @@
 
 In Grafana (UI or `grafana-cli`):
 
-```
+```bash
 grafana-cli dashboards import docs/grafana/blog-mcp-dashboard.json
 ```
 

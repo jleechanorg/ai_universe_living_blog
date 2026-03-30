@@ -251,10 +251,6 @@
         .join('');
     }
 
-    function parseContent(text) {
-      try { return JSON.parse(text); } catch { return { title: text, content: text }; }
-    }
-
     function badgeClass(eventType) {
       return 'badge badge-' + (eventType || 'default');
     }
@@ -270,7 +266,7 @@
 
       card.innerHTML = `
         <div class="post-header">
-          <span class="${badgeClass(post.eventType)}">${post.eventType || 'post'}</span>
+          <span class="${badgeClass(post.eventType)}">${esc(post.eventType || 'post')}</span>
           <span class="post-title">${esc(post.title || 'Untitled')}</span>
         </div>
         ${meta ? `<div class="post-meta">${esc(meta)}</div>` : ''}
@@ -312,7 +308,8 @@
       try {
         const result = await rpc('list_repos');
         const text = extractText(result);
-        const repos = text ? JSON.parse(text) : [];
+        const parsed = text ? JSON.parse(text) : {};
+        const repos = Array.isArray(parsed.repos) ? parsed.repos : [];
         $repoSelect.innerHTML = repos.length
           ? repos.map(r => `<option value="${esc(r.repoKey)}">${esc(r.repoKey)}</option>`).join('')
           : '<option value="">-- no repos registered --</option>';
@@ -364,11 +361,11 @@
 
         posts.forEach(post => $posts.appendChild(renderPost(post)));
 
-        if (data.nextCursor) {
+        if (data.cursor) {
           const btn = document.createElement('button');
           btn.textContent = 'Load more';
           btn.addEventListener('click', () => {
-            cursor = data.nextCursor;
+            cursor = data.cursor;
             loadMorePosts();
           });
           $pagination.appendChild(btn);
@@ -403,8 +400,8 @@
 
         posts.forEach(post => $posts.appendChild(renderPost(post)));
 
-        if (data.nextCursor) {
-          cursor = data.nextCursor;
+        if (data.cursor) {
+          cursor = data.cursor;
           const btn = document.createElement('button');
           btn.textContent = 'Load more';
           btn.addEventListener('click', loadMorePosts);

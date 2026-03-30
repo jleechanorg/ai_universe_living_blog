@@ -203,12 +203,8 @@ export async function createBlogApp(options?: {
   });
 
   // Serve public/ static files (Phase 2 Web Reader UI)
+  // express.static serves public/index.html for GET / automatically
   app.use(express.static(path.join(process.cwd(), 'public')));
-
-  // Root — serve index.html
-  app.get('/', (_req, res) => {
-    res.sendFile(path.join(process.cwd(), 'public', 'index.html'));
-  });
 
   // MCP metadata
   app.get('/mcp', (_req, res) => {

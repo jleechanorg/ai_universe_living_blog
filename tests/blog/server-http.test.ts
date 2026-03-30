@@ -93,11 +93,10 @@ describe('Blog MCP Server HTTP', () => {
   });
 
   // 6
-  it('GET /: returns server info', async () => {
+  it('GET /: returns HTML page (Phase 2 Web Reader UI)', async () => {
     const res = await request(app).get('/').expect(200);
-    expect(res.body.service).toBe('Blog MCP Server');
-    expect(res.body.tools).toBeDefined();
-    expect(Array.isArray(res.body.tools)).toBe(true);
+    expect(res.headers['content-type']).toMatch(/html/);
+    expect(res.text).toContain('AI Universe Living Blog');
   });
 
   // 7

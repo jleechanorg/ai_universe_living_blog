@@ -1122,6 +1122,33 @@ interface ListPostsRpcResult {
 }
 
 /**
+ * Detect which posts in a batch are new (not yet in seenIds).
+ * Callers should add returned post IDs to their seenIds set.
+ */
+export function detectNewPosts<T extends { id: string }>(
+  seenIds: ReadonlySet<string>,
+  posts: T[],
+): T[] {
+  return posts.filter((p) => !seenIds.has(p.id));
+}
+
+/**
+ * Compute the next backoff delay after a poll attempt.
+ * On failure: doubles the delay, capped at MAX_BACKOFF_MS.
+ * On success: resets to BASE_BACKOFF_MS.
+ */
+export const BASE_BACKOFF_MS = 1_000;
+export const MAX_BACKOFF_MS = 30_000;
+
+export function computeBackoff(
+  currentDelayMs: number,
+  succeeded: boolean,
+): number {
+  if (succeeded) return BASE_BACKOFF_MS;
+  return Math.min(currentDelayMs * 2, MAX_BACKOFF_MS);
+}
+
+/**
  * blog-cli watch [--repo owner/repo] [--interval N]
  *
  * Polls the MCP server for new posts and prints them in real time.
@@ -1138,8 +1165,7 @@ export async function runWatchCommand(args: ParsedArgs): Promise<void> {
   const seenIds = new Set<string>();
   let newPostsSeen = 0;
   let shutdown = false;
-  let retryDelayMs = 1000;
-  const MAX_BACKOFF_MS = 30_000;
+  let retryDelayMs = BASE_BACKOFF_MS;
 
   // SIGINT handler — graceful shutdown
   const handleSigInt = (): void => {
@@ -1160,7 +1186,7 @@ export async function runWatchCommand(args: ParsedArgs): Promise<void> {
         const { posts } = result;
 
         // Filter to genuinely new posts (not yet seen)
-        const newPosts = posts.filter((p) => !seenIds.has(p.id));
+        const newPosts = detectNewPosts(seenIds, posts);
 
         // Print each new post
         for (const post of newPosts) {
@@ -1170,14 +1196,14 @@ export async function runWatchCommand(args: ParsedArgs): Promise<void> {
         }
 
         // Reset backoff on successful poll
-        retryDelayMs = 1000;
+        retryDelayMs = computeBackoff(retryDelayMs, true);
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         console.warn(`Warning: could not reach server — ${msg}. Retrying in ${retryDelayMs / 1000}s...`);
 
         // Exponential backoff, capped at 30s
         await sleep(retryDelayMs);
-        retryDelayMs = Math.min(retryDelayMs * 2, MAX_BACKOFF_MS);
+        retryDelayMs = computeBackoff(retryDelayMs, false);
         // Don't count this wait toward the interval — retry immediately
         continue;
       }

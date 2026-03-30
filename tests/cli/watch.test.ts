@@ -11,7 +11,15 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { parseArgs, formatPostLine, type ParsedArgs } from '../../src/cli/main.js';
+import {
+  parseArgs,
+  formatPostLine,
+  detectNewPosts,
+  computeBackoff,
+  BASE_BACKOFF_MS,
+  MAX_BACKOFF_MS,
+  type ParsedArgs,
+} from '../../src/cli/main.js';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -153,8 +161,7 @@ describe('runWatchCommand', () => {
 // ─── cursor tracking logic ────────────────────────────────────────────────────
 
 describe('watch cursor tracking (unit)', () => {
-  it('detects new posts vs already-seen posts', () => {
-    // Simulate the deduplication logic from runWatchCommand
+  it('detects new posts vs already-seen posts via detectNewPosts', () => {
     const seenIds = new Set<string>(['id-1', 'id-2']);
     const posts = [
       { id: 'id-1', title: 'old post' },
@@ -162,59 +169,61 @@ describe('watch cursor tracking (unit)', () => {
       { id: 'id-2', title: 'also old' },
       { id: 'id-4', title: 'also new' },
     ];
-    const newPosts = posts.filter((p) => !seenIds.has(p.id));
+    const newPosts = detectNewPosts(seenIds, posts);
     expect(newPosts).toHaveLength(2);
-    expect(newPosts[0]!.title).toBe('new post');
-    expect(newPosts[1]!.title).toBe('also new');
+    expect(newPosts[0]!.id).toBe('id-3');
+    expect(newPosts[1]!.id).toBe('id-4');
   });
 
-  it('all-new batch returns all posts', () => {
+  it('all-new batch returns all posts via detectNewPosts', () => {
     const seenIds = new Set<string>();
     const posts = [
       { id: 'id-a', title: 'post a' },
       { id: 'id-b', title: 'post b' },
     ];
-    const newPosts = posts.filter((p) => !seenIds.has(p.id));
+    const newPosts = detectNewPosts(seenIds, posts);
     expect(newPosts).toHaveLength(2);
   });
 
-  it('empty batch returns empty', () => {
+  it('empty batch returns empty via detectNewPosts', () => {
     const seenIds = new Set<string>(['id-1', 'id-2', 'id-3']);
-    const posts: Array<{ id: string; title: string }> = [];
-    const newPosts = posts.filter((p) => !seenIds.has(p.id));
+    const posts: Array<{ id: string }> = [];
+    const newPosts = detectNewPosts(seenIds, posts);
     expect(newPosts).toHaveLength(0);
+  });
+
+  it('BASE_BACKOFF_MS and MAX_BACKOFF_MS are exported correctly', () => {
+    expect(BASE_BACKOFF_MS).toBe(1000);
+    expect(MAX_BACKOFF_MS).toBe(30_000);
   });
 });
 
 // ─── backoff logic ───────────────────────────────────────────────────────────
 
-describe('watch backoff', () => {
-  it('initial backoff starts at 1s', () => {
-    let retryDelayMs = 1000;
-    expect(retryDelayMs).toBe(1000);
+describe('watch backoff (computeBackoff)', () => {
+  it('initial backoff is BASE_BACKOFF_MS', () => {
+    expect(BASE_BACKOFF_MS).toBe(1000);
   });
 
-  it('backoff doubles on each failure, capped at 30s', () => {
-    let retryDelayMs = 1000;
-    const MAX_BACKOFF_MS = 30_000;
-    retryDelayMs = Math.min(retryDelayMs * 2, MAX_BACKOFF_MS); // 2s
-    expect(retryDelayMs).toBe(2000);
-    retryDelayMs = Math.min(retryDelayMs * 2, MAX_BACKOFF_MS); // 4s
-    expect(retryDelayMs).toBe(4000);
-    retryDelayMs = Math.min(retryDelayMs * 2, MAX_BACKOFF_MS); // 8s
-    expect(retryDelayMs).toBe(8000);
-    retryDelayMs = Math.min(retryDelayMs * 2, MAX_BACKOFF_MS); // 16s
-    expect(retryDelayMs).toBe(16000);
-    retryDelayMs = Math.min(retryDelayMs * 2, MAX_BACKOFF_MS); // 32s → capped
-    expect(retryDelayMs).toBe(30000);
-    retryDelayMs = Math.min(retryDelayMs * 2, MAX_BACKOFF_MS); // stays 30s
-    expect(retryDelayMs).toBe(30000);
+  it('backoff doubles on failure via computeBackoff', () => {
+    let delay = BASE_BACKOFF_MS;
+    delay = computeBackoff(delay, false); // 2s
+    expect(delay).toBe(2000);
+    delay = computeBackoff(delay, false); // 4s
+    expect(delay).toBe(4000);
+    delay = computeBackoff(delay, false); // 8s
+    expect(delay).toBe(8000);
+    delay = computeBackoff(delay, false); // 16s
+    expect(delay).toBe(16000);
+    delay = computeBackoff(delay, false); // 32s → capped at 30s
+    expect(delay).toBe(30000);
+    delay = computeBackoff(delay, false); // stays 30s
+    expect(delay).toBe(30000);
   });
 
-  it('backoff resets to 1s on success', () => {
-    let retryDelayMs = 16000;
-    // Simulate successful poll
-    retryDelayMs = 1000;
-    expect(retryDelayMs).toBe(1000);
+  it('backoff resets to BASE_BACKOFF_MS on success via computeBackoff', () => {
+    let delay = 16_000;
+    delay = computeBackoff(delay, true);
+    expect(delay).toBe(1000);
   });
 });

@@ -159,7 +159,7 @@ export const PERSONAS: Persona[] = [
  * modulo the persona count, for deterministic assignment.
  *
  * Examples:
- *   ao-826  → last digits "26" → 26 % 6 = 2 → PERSONAS[2] (Tester)
+ *   ao-826  → last digits "26" → 26 % 6 = 2 → PERSONAS[2] (The Architect)
  *   ao-1    → last digits "1"  →  1 % 6 = 1 → PERSONAS[1] (Debugger)
  *   ao-5    → last digits "5"  →  5 % 6 = 5 → PERSONAS[5] (Documentarian)
  */

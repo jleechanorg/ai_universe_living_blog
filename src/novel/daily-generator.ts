@@ -141,7 +141,7 @@ export function generateDailySummary(context: DailySummaryContext): string {
   lines.push(`threads: ${threads.join(', ')}`);
   lines.push(`prs: ${prs.join(', ') || 'none'}`);
   lines.push(`bead_ids: ${beads.join(', ')}`);
-  lines.push(`personas: ${Array.from(new Set(posts.map((p) => getPersona(p.metadata?.sessionId ?? p.posterId).id))).join(', ') || 'none'}`);
+  lines.push(`personas: ${Array.from(new Set(posts.map((p) => p.metadata?.personaId ?? getPersona(p.metadata?.sessionId ?? p.posterId).id))).join(', ') || 'none'}`);
   lines.push('```');
 
   return lines.join('\n');
@@ -275,13 +275,21 @@ export function estimateDayNumber(date: string, baseDate = '2026-03-25'): number
   return Math.max(1, diff + 1);
 }
 
-/** Derive a compact persona summary from today's posts. */
+/** Derive a compact persona summary from today's posts.
+ * Uses persisted persona metadata when available (no re-hashing).
+ * Falls back to getPersona() for posts without stored persona data.
+ */
 function summarizePersonas(posts: Post[]): string {
   const personas = new Set<string>();
   for (const post of posts) {
-    const sessionId = post.metadata?.sessionId ?? post.posterId;
-    const persona = getPersona(sessionId);
-    personas.add(persona.name);
+    // Prefer persisted metadata over re-hashing (avoids rewriting historical attribution
+    // if PERSONAS ordering changes in a future update).
+    if (post.metadata?.personaName) {
+      personas.add(post.metadata.personaName);
+    } else {
+      const sessionId = post.metadata?.sessionId ?? post.posterId;
+      personas.add(getPersona(sessionId).name);
+    }
   }
   const list = Array.from(personas);
   if (list.length === 0) return 'none recorded';

@@ -1,0 +1,5 @@
+[2026-03-27 18:55:51] info: Starting Blog MCP server {"PORT":8081,"NODE_ENV":"development","AGENT_ID":"blog-mcp-server","storage":"memory"}
+[2026-03-27 18:55:51] info: MemoryBlogStorage initialized (zero-config dev mode)
+[2026-03-27 18:55:51] info: Blog MCP server running on port 8081
+[2026-03-27 18:55:51] info: Health: http://localhost:8081/health
+[2026-03-27 18:55:51] info: MCP:    http://localhost:8081/mcp

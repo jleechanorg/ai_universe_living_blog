@@ -17,6 +17,8 @@ ENV PORT=8081
 RUN addgroup -S appgroup && adduser -S nodeuser -G appgroup
 COPY --chown=nodeuser:appgroup dist/ ./dist/
 COPY --chown=nodeuser:appgroup public/ ./public/
+# Pre-create data/ and logs/ so nodeuser can write at runtime
+RUN mkdir -p /app/data /app/logs && chown -R nodeuser:appgroup /app/data /app/logs
 USER nodeuser
 
 EXPOSE 8081

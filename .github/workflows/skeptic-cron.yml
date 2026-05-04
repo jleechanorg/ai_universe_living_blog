@@ -12,7 +12,7 @@ on:
 jobs:
   skeptic_cron:
     name: Skeptic Cron
-    runs-on: [self-hosted, ai_universe_living_blog]
+    runs-on: ubuntu-latest
     permissions:
       contents: write
       pull-requests: write

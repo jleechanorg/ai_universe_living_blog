@@ -12,7 +12,7 @@ on:
 
 jobs:
   daily-summary:
-    runs-on: [self-hosted, ai_universe_living_blog]
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4

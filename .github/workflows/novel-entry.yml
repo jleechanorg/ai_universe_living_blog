@@ -8,7 +8,7 @@ on:
 jobs:
   generate-novel-entry:
     name: Generate Novel Entry
-    runs-on: [self-hosted, ai_universe_living_blog]
+    runs-on: ubuntu-latest
     # Only trigger for feature/fix/chore/docs/refactor branches where we have meaningful narrative content
     if: >
       startsWith(github.head_ref, 'feat/') ||

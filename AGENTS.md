@@ -1,5 +1,7 @@
 # AGENTS.md — ai_universe_living_blog
 
+Keep this file <= 200 lines; move detail to linked docs.
+
 <!-- agent-harness:start -->
 ## Agent Navigation
 
